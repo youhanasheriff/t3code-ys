@@ -15,6 +15,7 @@
  */
 import * as Crypto from "node:crypto";
 import * as Http from "node:http";
+import type { AddressInfo } from "node:net";
 
 const GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -22,20 +23,19 @@ const OAUTH_SCOPES = ["openid", "email", "profile"];
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
- * Fixed loopback port + redirect URI for the sign-in flow.
+ * Fixed loopback port for the sign-in flow.
  *
  * A Google **"Web application"** OAuth client requires every redirect URI —
  * including the exact port — to be pre-registered under "Authorized redirect
  * URIs", so the listener binds to a fixed port instead of an ephemeral one.
  * (A "Desktop app" client would accept any `127.0.0.1`/`localhost` port without
- * registration, but we register a single stable URI to support either type.)
+ * registration, but a fixed port supports either client type.)
  *
  * Register this EXACT value (no trailing slash, no path) on the OAuth client:
  *
  *     http://127.0.0.1:33421
  */
 const LOOPBACK_PORT = 33421;
-const REDIRECT_URI = `http://127.0.0.1:${LOOPBACK_PORT}`;
 
 export interface GoogleOAuthClientConfig {
   readonly clientId: string;
@@ -54,6 +54,8 @@ export interface RunGoogleOAuthOptions {
   readonly timeoutMs?: number;
   /** Aborts an in-flight flow (e.g. window closing). */
   readonly signal?: AbortSignal;
+  /** Test seam: overrides the fixed loopback port (use 0 for an ephemeral port). */
+  readonly loopbackPort?: number;
   /** Test seam: overrides the token-exchange HTTP call. */
   readonly fetchToken?: (
     endpoint: string,
@@ -188,13 +190,23 @@ function awaitAuthorizationCode(
         return;
       }
 
+      const address = server.address() as AddressInfo | null;
+      const redirectUri = `http://127.0.0.1:${address?.port ?? LOOPBACK_PORT}`;
+
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(SUCCESS_HTML);
-      settleSuccess({ code, redirectUri: REDIRECT_URI });
+      settleSuccess({ code, redirectUri });
     });
 
-    server.listen(LOOPBACK_PORT, "127.0.0.1", () => {
-      const redirectUri = REDIRECT_URI;
+    const loopbackPort = options.loopbackPort ?? LOOPBACK_PORT;
+    server.listen(loopbackPort, "127.0.0.1", () => {
+      const address = server.address() as AddressInfo | null;
+      if (!address) {
+        settleError(new GoogleOAuthError("Could not determine the local sign-in port."));
+        return;
+      }
+
+      const redirectUri = `http://127.0.0.1:${address.port}`;
       const authUrl = new URL(GOOGLE_AUTH_ENDPOINT);
       authUrl.searchParams.set("client_id", options.config.clientId);
       authUrl.searchParams.set("redirect_uri", redirectUri);

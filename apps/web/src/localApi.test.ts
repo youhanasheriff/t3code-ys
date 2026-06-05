@@ -179,6 +179,7 @@ function createLocalStorageStub(): Storage {
 
 function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
   return {
+    startGoogleSignIn: async () => ({ idToken: "test-id-token" }),
     getAppBranding: () => null,
     getLocalEnvironmentBootstrap: () => null,
     getClientSettings: async () => null,

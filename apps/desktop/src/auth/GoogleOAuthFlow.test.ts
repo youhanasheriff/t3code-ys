@@ -25,6 +25,7 @@ describe("runGoogleOAuthLoopbackFlow", () => {
 
     const result = await runGoogleOAuthLoopbackFlow({
       config,
+      loopbackPort: 0,
       openExternalUrl: redirectingOpener((state) => `?code=auth-code-123&state=${state}`),
       fetchToken: async (_endpoint, body) => {
         captured.body = body;
@@ -44,6 +45,7 @@ describe("runGoogleOAuthLoopbackFlow", () => {
     await expect(
       runGoogleOAuthLoopbackFlow({
         config,
+        loopbackPort: 0,
         openExternalUrl: redirectingOpener(() => `?code=auth-code-123&state=tampered`),
         fetchToken: async () => ({ id_token: "should-not-be-used" }),
       }),
@@ -54,6 +56,7 @@ describe("runGoogleOAuthLoopbackFlow", () => {
     await expect(
       runGoogleOAuthLoopbackFlow({
         config,
+        loopbackPort: 0,
         openExternalUrl: redirectingOpener((state) => `?error=access_denied&state=${state}`),
         fetchToken: async () => ({ id_token: "should-not-be-used" }),
       }),
@@ -64,6 +67,7 @@ describe("runGoogleOAuthLoopbackFlow", () => {
     await expect(
       runGoogleOAuthLoopbackFlow({
         config,
+        loopbackPort: 0,
         openExternalUrl: redirectingOpener((state) => `?code=auth-code-123&state=${state}`),
         fetchToken: async () => ({ error: "invalid_grant", error_description: "bad code" }),
       }),
@@ -76,6 +80,7 @@ describe("runGoogleOAuthLoopbackFlow", () => {
     await expect(
       runGoogleOAuthLoopbackFlow({
         config,
+        loopbackPort: 0,
         signal: controller.signal,
         openExternalUrl: async () => {
           throw new Error("browser should not open when already aborted");

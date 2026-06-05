@@ -18,6 +18,8 @@
  * last-recorded map is persisted in localStorage so deltas survive reloads and
  * never double-count.
  */
+import type { ThreadId } from "@t3tools/contracts";
+
 import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { useStore, type EnvironmentState } from "../store";
 import { getFirebase } from "./firebase";
@@ -73,7 +75,7 @@ function num(value: number | null | undefined): number {
 }
 
 /** Reads the latest cumulative usage totals for a thread from its activities. */
-function deriveThreadTotals(env: EnvironmentState, threadId: string): UsageTotals {
+function deriveThreadTotals(env: EnvironmentState, threadId: ThreadId): UsageTotals {
   const activityIds = env.activityIdsByThreadId[threadId];
   const activityMap = env.activityByThreadId[threadId];
   if (!activityIds || !activityMap) {
@@ -102,7 +104,7 @@ function collectChatRecords(): ChatRecord[] {
   const records: ChatRecord[] = [];
 
   for (const [environmentId, env] of Object.entries(state.environmentStateById)) {
-    for (const threadId of Object.keys(env.activityByThreadId)) {
+    for (const threadId of Object.keys(env.activityByThreadId) as ThreadId[]) {
       const totals = deriveThreadTotals(env, threadId);
       const messageCount = env.messageIdsByThreadId[threadId]?.length ?? 0;
       if (totals.totalTokens <= 0 && messageCount <= 0) {
