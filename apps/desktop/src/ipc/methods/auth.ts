@@ -2,10 +2,7 @@ import { DesktopGoogleSignInResultSchema } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import {
-  GoogleOAuthError,
-  runGoogleOAuthLoopbackFlow,
-} from "../../auth/GoogleOAuthFlow.ts";
+import { GoogleOAuthError, runGoogleOAuthLoopbackFlow } from "../../auth/GoogleOAuthFlow.ts";
 import { getGoogleOAuthClientConfig } from "../../auth/googleOAuthConfig.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as IpcChannels from "../channels.ts";
@@ -22,21 +19,28 @@ export const startGoogleSignIn = makeIpcMethod({
   result: DesktopGoogleSignInResultSchema,
   handler: Effect.fn("desktop.ipc.auth.startGoogleSignIn")(function* () {
     const shell = yield* ElectronShell.ElectronShell;
+    const context = yield* Effect.context<ElectronShell.ElectronShell>();
+    const runWithContext = Effect.runPromiseWith(context);
     const config = yield* Effect.try({
       try: () => getGoogleOAuthClientConfig(),
       catch: (error) =>
-        error instanceof Error ? error : new GoogleOAuthError("Google sign-in is not configured."),
+        new GoogleOAuthError(
+          error instanceof Error ? error.message : "Google sign-in is not configured.",
+          { cause: error },
+        ),
     });
 
     return yield* Effect.tryPromise({
       try: (signal) =>
         runGoogleOAuthLoopbackFlow({
           config,
-          openExternalUrl: (url) => Effect.runPromise(shell.openExternal(url)),
+          openExternalUrl: (url) => runWithContext(shell.openExternal(url)),
           signal,
         }),
       catch: (error) =>
-        error instanceof Error ? error : new GoogleOAuthError("Google sign-in failed."),
+        new GoogleOAuthError(error instanceof Error ? error.message : "Google sign-in failed.", {
+          cause: error,
+        }),
     });
   }),
 });

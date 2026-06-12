@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalFetch:off
 /**
  * Desktop Google sign-in via OAuth 2.0 authorization-code + PKCE with a loopback
  * redirect, as recommended by Google for native/desktop apps
@@ -152,7 +155,9 @@ function awaitAuthorizationCode(
     }
 
     server.on("error", (error) => {
-      settleError(new GoogleOAuthError("Could not start the local sign-in listener.", { cause: error }));
+      settleError(
+        new GoogleOAuthError("Could not start the local sign-in listener.", { cause: error }),
+      );
     });
 
     server.on("request", (req, res) => {
@@ -223,7 +228,9 @@ function awaitAuthorizationCode(
       timer.unref?.();
 
       Promise.resolve(options.openExternalUrl(authUrl.toString())).catch((error: unknown) => {
-        settleError(new GoogleOAuthError("Could not open the browser for Google sign-in.", { cause: error }));
+        settleError(
+          new GoogleOAuthError("Could not open the browser for Google sign-in.", { cause: error }),
+        );
       });
     });
   });

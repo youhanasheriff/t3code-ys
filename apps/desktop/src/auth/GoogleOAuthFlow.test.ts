@@ -13,6 +13,7 @@ function redirectingOpener(query: (state: string) => string) {
     if (!redirectUri || !state) {
       throw new Error("auth url missing redirect_uri/state");
     }
+    // @effect-diagnostics-next-line globalFetch:off - this test drives the local loopback listener.
     const response = await fetch(`${redirectUri}/${query(state)}`);
     // Drain the body so the server can finish responding.
     await response.text();
