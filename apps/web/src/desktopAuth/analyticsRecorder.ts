@@ -49,6 +49,13 @@ interface ChatRecord {
 const STORAGE_PREFIX = "t3code:desktopUsage:v1:";
 const FLUSH_DEBOUNCE_MS = 1500;
 
+/**
+ * Only Codex sessions are mirrored to Firestore. Chats from other providers
+ * (claudeAgent, cursor, …) are skipped entirely so neither per-chat docs nor
+ * the provider-blind dailyUsage buckets ever include non-Codex tokens.
+ */
+const TRACKED_PROVIDER = "codex";
+
 function zeroTotals(): UsageTotals {
   return {
     inputTokens: 0,
@@ -105,6 +112,11 @@ function collectChatRecords(): ChatRecord[] {
 
   for (const [environmentId, env] of Object.entries(state.environmentStateById)) {
     for (const threadId of Object.keys(env.activityByThreadId) as ThreadId[]) {
+      const session = env.threadSessionById[threadId];
+      if (session?.provider !== TRACKED_PROVIDER) {
+        continue;
+      }
+
       const totals = deriveThreadTotals(env, threadId);
       const messageCount = env.messageIdsByThreadId[threadId]?.length ?? 0;
       if (totals.totalTokens <= 0 && messageCount <= 0) {
@@ -112,7 +124,6 @@ function collectChatRecords(): ChatRecord[] {
       }
 
       const shell = env.threadShellById[threadId];
-      const session = env.threadSessionById[threadId];
       const summaryTitle = env.sidebarThreadSummaryById[threadId]?.title;
       const activitySnapshot = (() => {
         const activityIds = env.activityIdsByThreadId[threadId];
