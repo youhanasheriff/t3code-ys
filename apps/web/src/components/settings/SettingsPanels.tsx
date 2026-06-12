@@ -29,6 +29,7 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
+import { useDesktopAuthStore } from "../../desktopAuth/desktopAuthStore";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useTheme } from "../../hooks/useTheme";
 import { useSettings, useUpdateSettings } from "../../hooks/useSettings";
@@ -912,7 +913,42 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <DesktopAccountSettingsSection />
     </SettingsPageContainer>
+  );
+}
+
+/**
+ * Desktop-only account section: shows the signed-in Google account and a sign-out
+ * action. Renders nothing in the hosted web build.
+ */
+function DesktopAccountSettingsSection() {
+  const user = useDesktopAuthStore((state) => state.user);
+  const signOut = useDesktopAuthStore((state) => state.signOut);
+
+  if (!isElectron || !user) {
+    return null;
+  }
+
+  return (
+    <SettingsSection title="Account">
+      <SettingsRow
+        title="Signed in"
+        description={user.email ?? user.displayName ?? "Google account"}
+        control={
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              void signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        }
+      />
+    </SettingsSection>
   );
 }
 

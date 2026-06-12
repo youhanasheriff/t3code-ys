@@ -372,6 +372,21 @@ export const PickFolderOptionsSchema = Schema.Struct({
   initialPath: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
+/**
+ * Result of the desktop-only Google sign-in flow. The Electron main process
+ * drives an OAuth 2.0 authorization-code + PKCE exchange in the user's default
+ * browser and returns the resulting Google ID token, which the renderer then
+ * hands to Firebase via `signInWithCredential`.
+ */
+export interface DesktopGoogleSignInResult {
+  /** Google-issued OpenID Connect ID token (JWT) for `GoogleAuthProvider.credential`. */
+  idToken: string;
+}
+
+export const DesktopGoogleSignInResultSchema = Schema.Struct({
+  idToken: Schema.String,
+});
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -417,6 +432,12 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
+  /**
+   * Desktop-only: run the Google sign-in flow in the user's default browser and
+   * resolve with the Google ID token. Rejects if the user cancels, the flow
+   * times out, or OAuth is not configured.
+   */
+  startGoogleSignIn: () => Promise<DesktopGoogleSignInResult>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
