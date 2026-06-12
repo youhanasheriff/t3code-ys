@@ -2,7 +2,7 @@
 
 This guide covers the one-time setup for the **desktop-only** Google sign-in and
 Firestore usage-analytics feature. It is an internal tool: each teammate signs in
-with their own Google account on their own laptop, and the token usage from *their*
+with their own Google account on their own laptop, and the token usage from _their_
 local chats is recorded to Firestore under their account.
 
 > The feature is gated by `isElectron` — it only activates in the Electron desktop

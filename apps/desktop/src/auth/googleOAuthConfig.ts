@@ -24,8 +24,7 @@
 const PLACEHOLDER = "REPLACE_ME";
 
 /** OAuth 2.0 "Desktop app" client ID, e.g. "1234-abcd.apps.googleusercontent.com". */
-export const GOOGLE_OAUTH_CLIENT_ID =
-  process.env.T3CODE_GOOGLE_OAUTH_CLIENT_ID ?? PLACEHOLDER;
+export const GOOGLE_OAUTH_CLIENT_ID = process.env.T3CODE_GOOGLE_OAUTH_CLIENT_ID ?? PLACEHOLDER;
 
 /** OAuth 2.0 "Desktop app" client secret. */
 export const GOOGLE_OAUTH_CLIENT_SECRET =

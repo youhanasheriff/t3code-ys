@@ -26,12 +26,8 @@ export function getFirebase(): Promise<FirebaseHandles> {
   if (!handlesPromise) {
     handlesPromise = (async () => {
       const { initializeApp, getApps } = await import("firebase/app");
-      const {
-        getAuth,
-        setPersistence,
-        indexedDBLocalPersistence,
-        browserLocalPersistence,
-      } = await import("firebase/auth");
+      const { getAuth, setPersistence, indexedDBLocalPersistence, browserLocalPersistence } =
+        await import("firebase/auth");
       const { getFirestore } = await import("firebase/firestore");
 
       const existing = getApps();
@@ -72,9 +68,7 @@ export async function signOutDesktop(): Promise<void> {
 }
 
 /** Subscribes to Firebase auth state. Returns an unsubscribe function. */
-export async function observeAuthState(
-  onChange: (user: User | null) => void,
-): Promise<() => void> {
+export async function observeAuthState(onChange: (user: User | null) => void): Promise<() => void> {
   const { auth } = await getFirebase();
   const { onAuthStateChanged } = await import("firebase/auth");
   return onAuthStateChanged(auth, onChange);
