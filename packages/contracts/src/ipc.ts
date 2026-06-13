@@ -86,6 +86,10 @@ export interface ContextMenuItem<T extends string = string> {
   label: string;
   destructive?: boolean;
   disabled?: boolean;
+  /** Renders as a non-interactive section header label. Web fallback only — stripped on desktop native menus. */
+  header?: boolean;
+  /** Icon keyword resolved by the web fallback. Stripped on desktop native menus. */
+  icon?: string;
   children?: readonly ContextMenuItem<T>[];
 }
 
@@ -94,6 +98,8 @@ export interface ContextMenuItemSchemaType {
   readonly label: string;
   readonly destructive?: boolean;
   readonly disabled?: boolean;
+  readonly header?: boolean;
+  readonly icon?: string;
   readonly children?: readonly ContextMenuItemSchemaType[];
 }
 
@@ -102,6 +108,8 @@ export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemSchemaType> = Sc
   label: Schema.String,
   destructive: Schema.optionalKey(Schema.Boolean),
   disabled: Schema.optionalKey(Schema.Boolean),
+  header: Schema.optionalKey(Schema.Boolean),
+  icon: Schema.optionalKey(Schema.String),
   children: Schema.optionalKey(
     Schema.Array(
       Schema.suspend((): Schema.Codec<ContextMenuItemSchemaType> => ContextMenuItemSchema),
@@ -338,6 +346,11 @@ export const PersistedSavedEnvironmentRecordSchema = Schema.Struct({
   createdAt: Schema.String,
   lastConnectedAt: Schema.NullOr(Schema.String),
   desktopSsh: Schema.optionalKey(DesktopSshEnvironmentTargetSchema),
+  relayManaged: Schema.optionalKey(
+    Schema.Struct({
+      relayUrl: Schema.String,
+    }),
+  ),
 });
 export type PersistedSavedEnvironmentRecord = typeof PersistedSavedEnvironmentRecordSchema.Type;
 

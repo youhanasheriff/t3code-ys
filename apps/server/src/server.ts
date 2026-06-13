@@ -44,6 +44,8 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
+import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
+import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
@@ -67,6 +69,10 @@ import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment.ts
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import { connectHttpApiLayer, reconcileDesiredCloudLink } from "./cloud/http.ts";
+import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
+import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
+import * as CloudCliState from "./cloud/CliState.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
@@ -78,7 +84,14 @@ import {
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@t3tools/shared/Net";
+import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
+
+// Effect's default preemptive shutdown waits 20s before finalizing request scopes.
+// T3's primary transport is long-lived WebSocket RPC, whose Effect scope finalizer
+// already closes the websocket gracefully. Do not add an artificial drain before
+// those finalizers get a chance to run.
+const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
 
 const PtyAdapterLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -92,6 +105,13 @@ const PtyAdapterLive = Layer.unwrap(
   }),
 );
 
+const RelayClientLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    return RelayClient.layerCloudflared({ baseDir: config.baseDir });
+  }),
+);
+
 const HttpServerLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
@@ -102,6 +122,7 @@ const HttpServerLive = Layer.unwrap(
       return BunHttpServer.layer({
         port: config.port,
         ...(config.host ? { hostname: config.host } : {}),
+        gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
       });
     } else {
       const [NodeHttpServer, NodeHttp] = yield* Effect.all([
@@ -111,6 +132,7 @@ const HttpServerLive = Layer.unwrap(
       return NodeHttpServer.layer(NodeHttp.createServer, {
         host: config.host,
         port: config.port,
+        gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
       });
     }
   }),
@@ -134,6 +156,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
   Layer.provideMerge(ThreadDeletionReactorLive),
+  Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 
@@ -231,6 +254,14 @@ const AuthLayerLive = EnvironmentAuth.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
 );
 
+const CloudManagedEndpointRuntimeLive = Layer.mergeAll(
+  RelayClientLive,
+  CloudManagedEndpointRuntime.layer.pipe(
+    Layer.provide(ServerSecretStore.layer),
+    Layer.provide(RelayClientLive),
+  ),
+);
+
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
@@ -271,6 +302,13 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(ServerEnvironmentLive),
   Layer.provideMerge(AuthLayerLive),
+  Layer.provideMerge(ServerSecretStore.layer),
+  Layer.provideMerge(
+    Layer.mergeAll(
+      CloudCliTokenManager.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+      CloudManagedEndpointRuntimeLive,
+    ),
+  ),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
@@ -291,6 +329,7 @@ const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
 export const makeRoutesLayer = Layer.mergeAll(
   HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
     Layer.provide(authHttpApiLayer),
+    Layer.provide(connectHttpApiLayer),
     Layer.provide(orchestrationHttpApiLayer),
     Layer.provide(serverEnvironmentHttpApiLayer),
     Layer.provide(environmentAuthenticatedAuthLayer),
@@ -387,6 +426,27 @@ export const makeServerLayer = Layer.unwrap(
           ),
         )
       : Layer.empty;
+    const cloudDesiredLinkReconcileLayer = Layer.effectDiscard(
+      Effect.gen(function* () {
+        if (!hasCloudPublicConfig) return;
+        if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
+        const server = yield* HttpServer.HttpServer;
+        const address = server.address;
+        if (typeof address === "string" || !("port" in address)) return;
+        yield* Effect.forkScoped(
+          Effect.sleep("250 millis").pipe(
+            Effect.andThen(reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`)),
+            Effect.retry({ times: 4 }),
+            Effect.tap(() => Effect.logInfo("T3 Connect desired link reconciled on startup")),
+            Effect.catch((cause) =>
+              Effect.logWarning("Failed to reconcile T3 Connect desired link on startup", {
+                cause,
+              }),
+            ),
+          ),
+        );
+      }),
+    );
 
     const serverApplicationLayer = Layer.mergeAll(
       HttpRouter.serve(makeRoutesLayer, {
@@ -395,6 +455,7 @@ export const makeServerLayer = Layer.unwrap(
       httpListeningLayer,
       runtimeStateLayer,
       tailscaleServeLayer,
+      cloudDesiredLinkReconcileLayer,
     );
 
     return serverApplicationLayer.pipe(
