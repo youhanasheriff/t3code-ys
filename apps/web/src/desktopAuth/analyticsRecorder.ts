@@ -11,6 +11,8 @@
  *   users/{uid}                       → profile + lastSeenAt
  *   users/{uid}/chats/{threadKey}     → per-chat cumulative metadata + tokens
  *   users/{uid}/dailyUsage/{date}     → per-day token totals (incremented by deltas)
+ *   users/{uid}/providers/codex/dailyUsage/{date}
+ *                                      → provider-scoped daily token totals
  *
  * Token totals (inputTokens/outputTokens/…) are cumulative-monotonic per thread,
  * so per-chat docs store the latest cumulative value and the daily bucket is
@@ -265,11 +267,34 @@ export function startDesktopAnalyticsRecorder(user: {
       const hasDailyDelta = dailyDelta.totalTokens > 0;
       if (hasDailyDelta) {
         const dailyRef = doc(db, "users", user.uid, "dailyUsage", dateKey);
+        const providerDailyRef = doc(
+          db,
+          "users",
+          user.uid,
+          "providers",
+          TRACKED_PROVIDER,
+          "dailyUsage",
+          dateKey,
+        );
         writes.push(
           setDoc(
             dailyRef,
             {
               date: dateKey,
+              inputTokens: increment(dailyDelta.inputTokens),
+              outputTokens: increment(dailyDelta.outputTokens),
+              cachedInputTokens: increment(dailyDelta.cachedInputTokens),
+              reasoningOutputTokens: increment(dailyDelta.reasoningOutputTokens),
+              totalTokens: increment(dailyDelta.totalTokens),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          ),
+          setDoc(
+            providerDailyRef,
+            {
+              date: dateKey,
+              provider: TRACKED_PROVIDER,
               inputTokens: increment(dailyDelta.inputTokens),
               outputTokens: increment(dailyDelta.outputTokens),
               cachedInputTokens: increment(dailyDelta.cachedInputTokens),
