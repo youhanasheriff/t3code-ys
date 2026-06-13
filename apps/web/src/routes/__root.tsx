@@ -13,7 +13,7 @@ import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
-import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
+import { DesktopAuthGate } from "../components/desktop/DesktopAuthGate";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import {
@@ -101,6 +101,16 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootRouteView() {
+  // Desktop-only: require Firebase Google sign-in before the app renders. In the
+  // hosted web build DesktopAuthGate is a transparent pass-through.
+  return (
+    <DesktopAuthGate>
+      <RootRouteContent />
+    </DesktopAuthGate>
+  );
+}
+
+function RootRouteContent() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
@@ -136,7 +146,6 @@ function RootRouteView() {
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         {primaryEnvironmentAuthenticated ? <ServerStateBootstrap /> : null}
         <EnvironmentConnectionManagerBootstrap />
-        <RelayClientInstallDialog />
         <SshPasswordPromptDialog />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}

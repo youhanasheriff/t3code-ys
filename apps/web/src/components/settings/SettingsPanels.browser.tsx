@@ -373,6 +373,7 @@ const createDesktopBridgeStub = (overrides?: {
   };
 
   return {
+    startGoogleSignIn: vi.fn().mockResolvedValue({ idToken: "test-id-token" }),
     getAppBranding: vi.fn().mockReturnValue(null),
     getLocalEnvironmentBootstrap: () => ({
       label: "Local environment",

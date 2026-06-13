@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Security rules for the desktop usage-analytics feature.
+//
+// Each signed-in user may read and write ONLY their own data under
+// users/{uid}/**. No user can read another user's usage. Admins/owners can
+// still read everything from the Firebase Console (console access bypasses
+// these rules), which is how aggregate analytics are reviewed.
+//
+// Deploy with:  firebase deploy --only firestore:rules
+// (or paste into Firebase Console → Firestore Database → Rules)
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // All sub-collections (chats, dailyUsage, …) inherit the same ownership rule.
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Everything else is denied by default.
+  }
+}

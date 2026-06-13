@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
+  ChartColumnIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 
+import { isElectron } from "../../env";
 import {
   SidebarContent,
   SidebarFooter,
@@ -28,6 +30,7 @@ export type SettingsSectionPath =
   | "/settings/providers"
   | "/settings/source-control"
   | "/settings/connections"
+  | "/settings/usage"
   | "/settings/archived";
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
@@ -40,6 +43,11 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
+  // Usage analytics are recorded only in the desktop build (Firebase), so the tab
+  // is hidden in the hosted web app where there is nothing to show.
+  ...(isElectron
+    ? [{ label: "Usage", to: "/settings/usage", icon: ChartColumnIcon } as const]
+    : []),
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
 ];
 

@@ -37,6 +37,7 @@
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "effect": "catalog:",
+    "firebase": "^12.14.0",
     "jose": "catalog:",
     "lexical": "^0.41.0",
     "lucide-react": "^0.564.0",
