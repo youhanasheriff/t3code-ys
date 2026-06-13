@@ -11,7 +11,7 @@
  *   users/{uid}                       → profile + lastSeenAt
  *   users/{uid}/chats/{threadKey}     → per-chat cumulative metadata + tokens
  *   users/{uid}/dailyUsage/{date}     → per-day token totals (incremented by deltas)
- *   users/{uid}/providers/codex/dailyUsage/{date}
+ *   users/{uid}/providers/{provider}/dailyUsage/{date}
  *                                      → provider-scoped daily token totals
  *
  * Token totals (inputTokens/outputTokens/…) are cumulative-monotonic per thread,
@@ -50,13 +50,7 @@ interface ChatRecord {
 
 const STORAGE_PREFIX = "t3code:desktopUsage:v1:";
 const FLUSH_DEBOUNCE_MS = 1500;
-
-/**
- * Only Codex sessions are mirrored to Firestore. Chats from other providers
- * (claudeAgent, cursor, …) are skipped entirely so neither per-chat docs nor
- * the provider-blind dailyUsage buckets ever include non-Codex tokens.
- */
-const TRACKED_PROVIDER = "codex";
+const UNKNOWN_PROVIDER = "unknown";
 
 function zeroTotals(): UsageTotals {
   return {
@@ -70,6 +64,20 @@ function zeroTotals(): UsageTotals {
 
 function threadKey(environmentId: string, threadId: string): string {
   return `${environmentId}:${threadId}`;
+}
+
+function providerKey(provider: string | null): string {
+  const raw = provider?.trim().toLowerCase() ?? "";
+  if (raw.length === 0) return UNKNOWN_PROVIDER;
+  return raw.replace(/[^a-z0-9._-]+/g, "_") || UNKNOWN_PROVIDER;
+}
+
+function addTotals(target: UsageTotals, source: UsageTotals): void {
+  target.inputTokens += source.inputTokens;
+  target.outputTokens += source.outputTokens;
+  target.cachedInputTokens += source.cachedInputTokens;
+  target.reasoningOutputTokens += source.reasoningOutputTokens;
+  target.totalTokens += source.totalTokens;
 }
 
 function localDateKey(now: Date): string {
@@ -115,9 +123,6 @@ function collectChatRecords(): ChatRecord[] {
   for (const [environmentId, env] of Object.entries(state.environmentStateById)) {
     for (const threadId of Object.keys(env.activityByThreadId) as ThreadId[]) {
       const session = env.threadSessionById[threadId];
-      if (session?.provider !== TRACKED_PROVIDER) {
-        continue;
-      }
 
       const totals = deriveThreadTotals(env, threadId);
       const messageCount = env.messageIdsByThreadId[threadId]?.length ?? 0;
@@ -201,10 +206,15 @@ export function startDesktopAnalyticsRecorder(user: {
 
       const dateKey = localDateKey(new Date());
       const dailyDelta = zeroTotals();
+      const providerDailyDeltas = new Map<
+        string,
+        { readonly provider: string | null; readonly totals: UsageTotals }
+      >();
       const writes: Promise<unknown>[] = [];
 
       for (const record of records) {
         const key = threadKey(record.environmentId, record.threadId);
+        const provider = providerKey(record.provider);
         const previous = lastRecorded[key] ?? zeroTotals();
         const totals = record.totals;
 
@@ -229,11 +239,14 @@ export function startDesktopAnalyticsRecorder(user: {
 
         if (!changed) continue;
 
-        dailyDelta.inputTokens += delta.inputTokens;
-        dailyDelta.outputTokens += delta.outputTokens;
-        dailyDelta.cachedInputTokens += delta.cachedInputTokens;
-        dailyDelta.reasoningOutputTokens += delta.reasoningOutputTokens;
-        dailyDelta.totalTokens += delta.totalTokens;
+        addTotals(dailyDelta, delta);
+
+        const providerDaily = providerDailyDeltas.get(provider) ?? {
+          provider: record.provider,
+          totals: zeroTotals(),
+        };
+        addTotals(providerDaily.totals, delta);
+        providerDailyDeltas.set(provider, providerDaily);
 
         const chatRef = doc(db, "users", user.uid, "chats", key);
         writes.push(
@@ -245,6 +258,7 @@ export function startDesktopAnalyticsRecorder(user: {
               projectId: record.projectId,
               title: record.title,
               provider: record.provider,
+              providerKey: provider,
               providerInstanceId: record.providerInstanceId,
               model: record.model,
               messageCount: record.messageCount,
@@ -267,15 +281,6 @@ export function startDesktopAnalyticsRecorder(user: {
       const hasDailyDelta = dailyDelta.totalTokens > 0;
       if (hasDailyDelta) {
         const dailyRef = doc(db, "users", user.uid, "dailyUsage", dateKey);
-        const providerDailyRef = doc(
-          db,
-          "users",
-          user.uid,
-          "providers",
-          TRACKED_PROVIDER,
-          "dailyUsage",
-          dateKey,
-        );
         writes.push(
           setDoc(
             dailyRef,
@@ -290,16 +295,32 @@ export function startDesktopAnalyticsRecorder(user: {
             },
             { merge: true },
           ),
+        );
+      }
+
+      for (const [provider, daily] of providerDailyDeltas) {
+        if (daily.totals.totalTokens <= 0) continue;
+        const providerDailyRef = doc(
+          db,
+          "users",
+          user.uid,
+          "providers",
+          provider,
+          "dailyUsage",
+          dateKey,
+        );
+        writes.push(
           setDoc(
             providerDailyRef,
             {
               date: dateKey,
-              provider: TRACKED_PROVIDER,
-              inputTokens: increment(dailyDelta.inputTokens),
-              outputTokens: increment(dailyDelta.outputTokens),
-              cachedInputTokens: increment(dailyDelta.cachedInputTokens),
-              reasoningOutputTokens: increment(dailyDelta.reasoningOutputTokens),
-              totalTokens: increment(dailyDelta.totalTokens),
+              provider: daily.provider,
+              providerKey: provider,
+              inputTokens: increment(daily.totals.inputTokens),
+              outputTokens: increment(daily.totals.outputTokens),
+              cachedInputTokens: increment(daily.totals.cachedInputTokens),
+              reasoningOutputTokens: increment(daily.totals.reasoningOutputTokens),
+              totalTokens: increment(daily.totals.totalTokens),
               updatedAt: serverTimestamp(),
             },
             { merge: true },
