@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 
 import {
   createStagePnpmConfig,
+  getMissingDesktopGoogleOAuthBuildEnv,
   resolveDesktopRuntimeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
@@ -23,7 +24,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "YS Code (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
   });
 
@@ -101,6 +102,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("falls back to the default mock update port when the configured port is blank", () => {
     assert.equal(resolveMockUpdateServerUrl(undefined), "http://localhost:3000");
     assert.equal(resolveMockUpdateServerUrl(4123), "http://localhost:4123");
+  });
+
+  it("detects missing desktop Google OAuth build configuration", () => {
+    assert.deepStrictEqual(getMissingDesktopGoogleOAuthBuildEnv({}), [
+      "T3CODE_GOOGLE_OAUTH_CLIENT_ID",
+      "T3CODE_GOOGLE_OAUTH_CLIENT_SECRET",
+    ]);
+    assert.deepStrictEqual(
+      getMissingDesktopGoogleOAuthBuildEnv({
+        T3CODE_GOOGLE_OAUTH_CLIENT_ID: "client.apps.googleusercontent.com",
+        T3CODE_GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+      }),
+      [],
+    );
   });
 
   it.effect("normalizes mock update server ports from env-style strings", () =>

@@ -39,8 +39,8 @@ export class GoogleOAuthNotConfiguredError extends Error {
   readonly _tag = "GoogleOAuthNotConfiguredError";
   constructor() {
     super(
-      "Google sign-in is not configured. Set GOOGLE_OAUTH_CLIENT_ID and " +
-        "GOOGLE_OAUTH_CLIENT_SECRET in the desktop process environment " +
+      "Google sign-in is not configured. Set T3CODE_GOOGLE_OAUTH_CLIENT_ID and " +
+        "T3CODE_GOOGLE_OAUTH_CLIENT_SECRET before building the desktop app " +
         "(see docs/desktop-firebase-auth-setup.md).",
     );
     this.name = "GoogleOAuthNotConfiguredError";

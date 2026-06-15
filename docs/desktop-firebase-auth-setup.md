@@ -65,8 +65,8 @@ allows loopback redirects on any port, which is what the flow uses).
 
 1. Google Cloud Console → **APIs & Services → Credentials** (same project as Firebase).
 2. **Create credentials → OAuth client ID → Application type: _Desktop app_**.
-3. Export the **Client ID** and **Client secret** in the desktop process
-   environment before building or running the app:
+3. Export the **Client ID** and **Client secret** before building the desktop app
+   or put them in the repo-root `.env.local` used by local builds:
 
    ```bash
    export T3CODE_GOOGLE_OAUTH_CLIENT_ID="…apps.googleusercontent.com"
@@ -96,8 +96,11 @@ from Auth + the Firestore rules above.
 
 ## Troubleshooting
 
-- **"Google sign-in is not configured"** — fill in the client ID/secret in
-  `googleOAuthConfig.ts` (step 4).
+- **"Google sign-in is not configured"** — set `T3CODE_GOOGLE_OAUTH_CLIENT_ID`
+  and `T3CODE_GOOGLE_OAUTH_CLIENT_SECRET`, then rebuild and reinstall the desktop
+  artifact (step 4). macOS apps launched from Finder do not inherit your shell
+  environment, so the release build embeds these desktop OAuth values at build
+  time.
 - **`auth/invalid-credential` after the browser step** — make sure the Desktop OAuth
   client is in the **same Google Cloud project** as Firebase, and that the Google
   provider is enabled in Firebase Auth (step 1).

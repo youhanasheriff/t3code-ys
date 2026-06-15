@@ -7,6 +7,7 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
+import { loadRepoEnv } from "./lib/public-config.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -673,6 +674,15 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
   return `http://localhost:${mockUpdateServerPort ?? 3000}`;
 }
 
+export function getMissingDesktopGoogleOAuthBuildEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): ReadonlyArray<string> {
+  return ["T3CODE_GOOGLE_OAUTH_CLIENT_ID", "T3CODE_GOOGLE_OAUTH_CLIENT_SECRET"].filter((name) => {
+    const value = env[name]?.trim();
+    return !value;
+  });
+}
+
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
@@ -845,6 +855,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const bundledClientEntry = path.join(distDirs.serverDist, "client/index.html");
 
   if (!options.skipBuild) {
+    const missingGoogleOAuthEnv = getMissingDesktopGoogleOAuthBuildEnv(loadRepoEnv({ repoRoot }));
+    if (missingGoogleOAuthEnv.length > 0) {
+      return yield* new BuildScriptError({
+        message:
+          `Missing desktop Google OAuth build config: ${missingGoogleOAuthEnv.join(", ")}. ` +
+          "Set these in the environment or repo-root .env.local before building a desktop artifact.",
+      });
+    }
+
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
     yield* runCommand(
       ChildProcess.make({

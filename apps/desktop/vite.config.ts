@@ -8,6 +8,12 @@ const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),
+  "process.env.T3CODE_GOOGLE_OAUTH_CLIENT_ID": JSON.stringify(
+    repoEnv.T3CODE_GOOGLE_OAUTH_CLIENT_ID?.trim() ?? "",
+  ),
+  "process.env.T3CODE_GOOGLE_OAUTH_CLIENT_SECRET": JSON.stringify(
+    repoEnv.T3CODE_GOOGLE_OAUTH_CLIENT_SECRET?.trim() ?? "",
+  ),
 };
 
 export default defineConfig({
