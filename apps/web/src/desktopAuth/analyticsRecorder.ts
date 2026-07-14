@@ -14,17 +14,17 @@
  *   users/{uid}/providers/{provider}/dailyUsage/{date}
  *                                      → provider-scoped daily token totals
  *
- * Token totals (inputTokens/outputTokens/…) are cumulative-monotonic per thread,
- * so per-chat docs store the latest cumulative value and the daily bucket is
- * incremented only by the positive delta since the last recorded value. The
- * last-recorded map is persisted in localStorage so deltas survive reloads and
- * never double-count.
+ * Token totals (inputTokens/outputTokens/…) are cumulative-monotonic per thread.
+ * A Firestore transaction compares each snapshot with its server-side chat doc,
+ * updates that checkpoint, and increments daily buckets atomically. Firestore is
+ * authoritative, so clearing browser storage or reinstalling cannot double-count.
  */
 import type { ThreadId } from "@t3tools/contracts";
 
 import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { useStore, type EnvironmentState } from "../store";
 import { getFirebase } from "./firebase";
+import { deriveRecoveredDailyTotals } from "./usageRecovery";
 
 interface UsageTotals {
   inputTokens: number;
@@ -48,9 +48,19 @@ interface ChatRecord {
   readonly totals: UsageTotals;
 }
 
-const STORAGE_PREFIX = "t3code:desktopUsage:v1:";
+interface RecoveredUsageRecord {
+  readonly id: string;
+  readonly threadKey: string;
+  readonly date: string;
+  readonly provider: string;
+  readonly totalTokens: number;
+}
+
 const FLUSH_DEBOUNCE_MS = 1500;
 const UNKNOWN_PROVIDER = "unknown";
+const USAGE_SCHEMA_VERSION = 2;
+const RECOVERY_SCHEMA_VERSION = 1;
+const RECOVERY_BATCH_SIZE = 400;
 
 function zeroTotals(): UsageTotals {
   return {
@@ -112,7 +122,9 @@ function deriveThreadTotals(env: EnvironmentState, threadId: ThreadId): UsageTot
     outputTokens,
     cachedInputTokens,
     reasoningOutputTokens,
-    totalTokens: inputTokens + outputTokens + reasoningOutputTokens,
+    // Codex's cumulative total already includes reasoning output. Prefer it
+    // when available; input + output is the equivalent fallback.
+    totalTokens: num(snapshot.totalProcessedTokens) || inputTokens + outputTokens,
   };
 }
 
@@ -160,6 +172,36 @@ function collectChatRecords(): ChatRecord[] {
   return records;
 }
 
+function collectRecoveredUsageRecords(): RecoveredUsageRecord[] {
+  const state = useStore.getState();
+  const records: RecoveredUsageRecord[] = [];
+
+  for (const [environmentId, env] of Object.entries(state.environmentStateById)) {
+    for (const threadId of Object.keys(env.activityByThreadId) as ThreadId[]) {
+      const provider = providerKey(env.threadSessionById[threadId]?.provider ?? null);
+      if (provider !== "codex") continue;
+      const activityIds = env.activityIdsByThreadId[threadId] ?? [];
+      const activityMap = env.activityByThreadId[threadId] ?? {};
+      const activities = activityIds
+        .map((id) => activityMap[id])
+        .filter((activity) => activity !== undefined);
+      const key = threadKey(environmentId, threadId);
+
+      for (const daily of deriveRecoveredDailyTotals(activities)) {
+        records.push({
+          id: `${encodeURIComponent(key)}:${daily.date}`,
+          threadKey: key,
+          date: daily.date,
+          provider,
+          totalTokens: daily.totalTokens,
+        });
+      }
+    }
+  }
+
+  return records;
+}
+
 export interface DesktopAnalyticsRecorder {
   stop: () => void;
 }
@@ -174,21 +216,11 @@ export function startDesktopAnalyticsRecorder(user: {
   displayName: string | null;
   photoURL: string | null;
 }): DesktopAnalyticsRecorder {
-  const storageKey = `${STORAGE_PREFIX}${user.uid}`;
-  const lastRecorded = loadLastRecorded(storageKey);
-
   let stopped = false;
   let flushing = false;
   let rerun = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-
-  const persist = () => {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(lastRecorded));
-    } catch {
-      // Non-fatal: deltas may be recomputed conservatively after a reload.
-    }
-  };
+  const recoveredFingerprints = new Map<string, number>();
 
   const flush = async () => {
     if (stopped) return;
@@ -200,58 +232,74 @@ export function startDesktopAnalyticsRecorder(user: {
     try {
       const records = collectChatRecords();
       if (records.length === 0) return;
+      const recoveredRecords = collectRecoveredUsageRecords();
 
       const { db } = await getFirebase();
-      const { doc, setDoc, serverTimestamp, increment } = await import("firebase/firestore");
+      const { doc, setDoc, serverTimestamp, increment, runTransaction, writeBatch } =
+        await import("firebase/firestore");
 
       const dateKey = localDateKey(new Date());
-      const dailyDelta = zeroTotals();
-      const providerDailyDeltas = new Map<
-        string,
-        { readonly provider: string | null; readonly totals: UsageTotals }
-      >();
-      const writes: Promise<unknown>[] = [];
+      await runTransaction(db, async (transaction) => {
+        const chatEntries = records.map((record) => {
+          const key = threadKey(record.environmentId, record.threadId);
+          return { record, key, ref: doc(db, "users", user.uid, "chats", key) };
+        });
+        const snapshots = await Promise.all(chatEntries.map(({ ref }) => transaction.get(ref)));
+        const dailyDelta = zeroTotals();
+        const providerDailyDeltas = new Map<
+          string,
+          { readonly provider: string | null; readonly totals: UsageTotals }
+        >();
 
-      for (const record of records) {
-        const key = threadKey(record.environmentId, record.threadId);
-        const provider = providerKey(record.provider);
-        const previous = lastRecorded[key] ?? zeroTotals();
-        const totals = record.totals;
+        chatEntries.forEach(({ record, ref }, index) => {
+          const snapshot = snapshots[index];
+          const stored = snapshot?.data();
+          const previous: UsageTotals = {
+            inputTokens: num(stored?.inputTokens),
+            outputTokens: num(stored?.outputTokens),
+            cachedInputTokens: num(stored?.cachedInputTokens),
+            reasoningOutputTokens: num(stored?.reasoningOutputTokens),
+            totalTokens: num(stored?.totalTokens),
+          };
+          const totals = record.totals;
+          const isSchemaMigration =
+            snapshot?.exists() && stored?.usageSchemaVersion !== USAGE_SCHEMA_VERSION;
+          const delta: UsageTotals = {
+            inputTokens: isSchemaMigration
+              ? 0
+              : Math.max(0, totals.inputTokens - previous.inputTokens),
+            outputTokens: isSchemaMigration
+              ? 0
+              : Math.max(0, totals.outputTokens - previous.outputTokens),
+            cachedInputTokens: isSchemaMigration
+              ? 0
+              : Math.max(0, totals.cachedInputTokens - previous.cachedInputTokens),
+            reasoningOutputTokens: isSchemaMigration
+              ? 0
+              : Math.max(0, totals.reasoningOutputTokens - previous.reasoningOutputTokens),
+            totalTokens: isSchemaMigration
+              ? 0
+              : Math.max(0, totals.totalTokens - previous.totalTokens),
+          };
+          const hasTokenDelta =
+            delta.totalTokens > 0 ||
+            delta.inputTokens > 0 ||
+            delta.outputTokens > 0 ||
+            delta.reasoningOutputTokens > 0 ||
+            delta.cachedInputTokens > 0;
+          const metadataChanged =
+            !snapshot?.exists() ||
+            stored?.title !== record.title ||
+            stored?.model !== record.model ||
+            stored?.provider !== record.provider ||
+            stored?.messageCount !== record.messageCount ||
+            isSchemaMigration;
+          const provider = providerKey(record.provider);
 
-        const delta = {
-          inputTokens: Math.max(0, totals.inputTokens - previous.inputTokens),
-          outputTokens: Math.max(0, totals.outputTokens - previous.outputTokens),
-          cachedInputTokens: Math.max(0, totals.cachedInputTokens - previous.cachedInputTokens),
-          reasoningOutputTokens: Math.max(
-            0,
-            totals.reasoningOutputTokens - previous.reasoningOutputTokens,
-          ),
-          totalTokens: Math.max(0, totals.totalTokens - previous.totalTokens),
-        };
+          if (!hasTokenDelta && !metadataChanged) return;
 
-        const changed =
-          delta.totalTokens > 0 ||
-          delta.inputTokens > 0 ||
-          delta.outputTokens > 0 ||
-          delta.reasoningOutputTokens > 0 ||
-          delta.cachedInputTokens > 0 ||
-          lastRecorded[key] === undefined;
-
-        if (!changed) continue;
-
-        addTotals(dailyDelta, delta);
-
-        const providerDaily = providerDailyDeltas.get(provider) ?? {
-          provider: record.provider,
-          totals: zeroTotals(),
-        };
-        addTotals(providerDaily.totals, delta);
-        providerDailyDeltas.set(provider, providerDaily);
-
-        const chatRef = doc(db, "users", user.uid, "chats", key);
-        writes.push(
-          setDoc(
-            chatRef,
+          transaction.set(
+            ref,
             {
               environmentId: record.environmentId,
               threadId: record.threadId,
@@ -263,6 +311,7 @@ export function startDesktopAnalyticsRecorder(user: {
               model: record.model,
               messageCount: record.messageCount,
               toolUses: record.toolUses,
+              usageSchemaVersion: USAGE_SCHEMA_VERSION,
               inputTokens: totals.inputTokens,
               outputTokens: totals.outputTokens,
               cachedInputTokens: totals.cachedInputTokens,
@@ -272,17 +321,21 @@ export function startDesktopAnalyticsRecorder(user: {
               updatedAt: serverTimestamp(),
             },
             { merge: true },
-          ),
-        );
+          );
 
-        lastRecorded[key] = totals;
-      }
+          if (!hasTokenDelta) return;
+          addTotals(dailyDelta, delta);
+          const providerDaily = providerDailyDeltas.get(provider) ?? {
+            provider: record.provider,
+            totals: zeroTotals(),
+          };
+          addTotals(providerDaily.totals, delta);
+          providerDailyDeltas.set(provider, providerDaily);
+        });
 
-      const hasDailyDelta = dailyDelta.totalTokens > 0;
-      if (hasDailyDelta) {
-        const dailyRef = doc(db, "users", user.uid, "dailyUsage", dateKey);
-        writes.push(
-          setDoc(
+        if (dailyDelta.totalTokens > 0) {
+          const dailyRef = doc(db, "users", user.uid, "dailyUsage", dateKey);
+          transaction.set(
             dailyRef,
             {
               date: dateKey,
@@ -294,23 +347,21 @@ export function startDesktopAnalyticsRecorder(user: {
               updatedAt: serverTimestamp(),
             },
             { merge: true },
-          ),
-        );
-      }
+          );
+        }
 
-      for (const [provider, daily] of providerDailyDeltas) {
-        if (daily.totals.totalTokens <= 0) continue;
-        const providerDailyRef = doc(
-          db,
-          "users",
-          user.uid,
-          "providers",
-          provider,
-          "dailyUsage",
-          dateKey,
-        );
-        writes.push(
-          setDoc(
+        for (const [provider, daily] of providerDailyDeltas) {
+          if (daily.totals.totalTokens <= 0) continue;
+          const providerDailyRef = doc(
+            db,
+            "users",
+            user.uid,
+            "providers",
+            provider,
+            "dailyUsage",
+            dateKey,
+          );
+          transaction.set(
             providerDailyRef,
             {
               date: dateKey,
@@ -324,13 +375,34 @@ export function startDesktopAnalyticsRecorder(user: {
               updatedAt: serverTimestamp(),
             },
             { merge: true },
-          ),
-        );
-      }
+          );
+        }
+      });
 
-      if (writes.length > 0) {
-        await Promise.all(writes);
-        persist();
+      const pendingRecovery = recoveredRecords.filter(
+        (record) => recoveredFingerprints.get(record.id) !== record.totalTokens,
+      );
+      for (let offset = 0; offset < pendingRecovery.length; offset += RECOVERY_BATCH_SIZE) {
+        const batchRecords = pendingRecovery.slice(offset, offset + RECOVERY_BATCH_SIZE);
+        const batch = writeBatch(db);
+        for (const record of batchRecords) {
+          batch.set(
+            doc(db, "users", user.uid, "recoveredDailyUsage", record.id),
+            {
+              date: record.date,
+              provider: record.provider,
+              threadKey: record.threadKey,
+              totalTokens: record.totalTokens,
+              recoverySchemaVersion: RECOVERY_SCHEMA_VERSION,
+              recoveredAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+        await batch.commit();
+        for (const record of batchRecords) {
+          recoveredFingerprints.set(record.id, record.totalTokens);
+        }
       }
     } catch (error) {
       // Analytics must never break the app; log and retry on the next change.
@@ -384,18 +456,4 @@ export function startDesktopAnalyticsRecorder(user: {
       unsubscribe();
     },
   };
-}
-
-function loadLastRecorded(storageKey: string): Record<string, UsageTotals> {
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as Record<string, UsageTotals>;
-    }
-  } catch {
-    // Corrupt/missing — start fresh.
-  }
-  return {};
 }

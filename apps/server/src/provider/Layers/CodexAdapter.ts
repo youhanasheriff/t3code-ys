@@ -162,10 +162,14 @@ function normalizeCodexTokenUsage(
   }
 
   const maxTokens = usage.modelContextWindow ?? undefined;
-  const inputTokens = usage.last.inputTokens;
-  const cachedInputTokens = usage.last.cachedInputTokens;
-  const outputTokens = usage.last.outputTokens;
-  const reasoningOutputTokens = usage.last.reasoningOutputTokens;
+  const inputTokens = usage.total.inputTokens;
+  const cachedInputTokens = usage.total.cachedInputTokens;
+  const outputTokens = usage.total.outputTokens;
+  const reasoningOutputTokens = usage.total.reasoningOutputTokens;
+  const lastInputTokens = usage.last.inputTokens;
+  const lastCachedInputTokens = usage.last.cachedInputTokens;
+  const lastOutputTokens = usage.last.outputTokens;
+  const lastReasoningOutputTokens = usage.last.reasoningOutputTokens;
 
   return {
     usedTokens,
@@ -178,12 +182,10 @@ function normalizeCodexTokenUsage(
     ...(outputTokens !== undefined ? { outputTokens } : {}),
     ...(reasoningOutputTokens !== undefined ? { reasoningOutputTokens } : {}),
     ...(usedTokens !== undefined ? { lastUsedTokens: usedTokens } : {}),
-    ...(inputTokens !== undefined ? { lastInputTokens: inputTokens } : {}),
-    ...(cachedInputTokens !== undefined ? { lastCachedInputTokens: cachedInputTokens } : {}),
-    ...(outputTokens !== undefined ? { lastOutputTokens: outputTokens } : {}),
-    ...(reasoningOutputTokens !== undefined
-      ? { lastReasoningOutputTokens: reasoningOutputTokens }
-      : {}),
+    ...(lastInputTokens !== undefined ? { lastInputTokens } : {}),
+    ...(lastCachedInputTokens !== undefined ? { lastCachedInputTokens } : {}),
+    ...(lastOutputTokens !== undefined ? { lastOutputTokens } : {}),
+    ...(lastReasoningOutputTokens !== undefined ? { lastReasoningOutputTokens } : {}),
     compactsAutomatically: true,
   };
 }
