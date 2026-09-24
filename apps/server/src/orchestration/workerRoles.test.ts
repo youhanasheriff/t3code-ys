@@ -1,6 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -8,13 +9,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 
 import {
-  buildRolePrompt,
+  buildRoleBrief,
   isPathPermitted,
   matchesGlobPattern,
+  parsePlannerAssignments,
   resolveRoleModel,
-} from "./WorkerRoleOrchestration.ts";
+} from "./workerRoles.ts";
 
-describe("WorkerRoleOrchestration", () => {
+describe("workerRoles", () => {
   describe("matchesGlobPattern and isPathPermitted", () => {
     it("allows any path when targetPaths is empty", () => {
       expect(isPathPermitted("apps/web/src/App.tsx", [])).toBe(true);
@@ -77,15 +79,17 @@ describe("WorkerRoleOrchestration", () => {
       const providers: ReadonlyArray<ServerProvider> = [
         {
           instanceId: ProviderInstanceId.make("claudeAgent"),
-          driver: "claudeAgent",
-          displayName: "Claude",
-          enabled: false,
-          available: false,
-          configured: false,
-          customModels: [],
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+          installed: true,
+          version: "1.0.0",
+          status: "ready",
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-11T00:00:00.000Z",
+          availability: "unavailable",
           models: [],
-          defaultModel: "claude-opus-5-5",
-          diagnostics: [],
+          slashCommands: [],
+          skills: [],
         },
       ];
       const model = resolveRoleModel(DEFAULT_SERVER_SETTINGS, "frontendWorker", { providers });
@@ -122,38 +126,79 @@ describe("WorkerRoleOrchestration", () => {
     });
   });
 
-  describe("buildRolePrompt", () => {
-    it("builds prompt for planner", () => {
-      const result = buildRolePrompt({
+  describe("buildRoleBrief", () => {
+    it("asks the planner for an assignment block", () => {
+      const brief = buildRoleBrief({
         role: "planner",
         userRequest: "Add user profile settings page",
       });
-      expect(result.systemPrompt).toContain("Lead Technical Planner");
-      expect(result.systemPrompt).toContain("Frontend Worker");
-      expect(result.systemPrompt).toContain("Backend Worker");
-      expect(result.initialUserMessage).toBe("Add user profile settings page");
+      expect(brief).toContain("Lead Technical Planner");
+      expect(brief).toContain('{"frontend"');
+      expect(brief).toContain("## Original request\nAdd user profile settings page");
     });
 
-    it("includes target paths and custom instructions in frontend worker prompt", () => {
-      const result = buildRolePrompt({
+    it("includes target paths, custom instructions, plan and assignment for workers", () => {
+      const brief = buildRoleBrief({
         role: "frontendWorker",
         userRequest: "Create Avatar component",
+        branchName: "feature/avatar",
         targetPaths: ["apps/web/**", "packages/ui/**"],
         customInstructions: "Use Tailwind v4 and Lucide icons exclusively.",
+        plan: "Build the avatar in the web app.",
+        assignment: "Create Avatar.tsx",
       });
-      expect(result.systemPrompt).toContain("Frontend Specialist Worker");
-      expect(result.systemPrompt).toContain("Target Path Constraints:");
-      expect(result.systemPrompt).toContain("- apps/web/**");
-      expect(result.systemPrompt).toContain("Use Tailwind v4 and Lucide icons exclusively.");
+      expect(brief).toContain("Frontend Specialist Worker");
+      expect(brief).toContain("- apps/web/**");
+      expect(brief).toContain("Use Tailwind v4 and Lucide icons exclusively.");
+      expect(brief).toContain("Branch: feature/avatar");
+      expect(brief).toContain("## Lead planner's plan\nBuild the avatar in the web app.");
+      expect(brief).toContain("## Your assignment\nCreate Avatar.tsx");
     });
 
-    it("includes reviewer instructions without direct edit access", () => {
-      const result = buildRolePrompt({
+    it("gives the reviewer every worker report with out-of-scope files", () => {
+      const brief = buildRoleBrief({
         role: "reviewer",
-        userRequest: "Review PR #42",
+        userRequest: "Add avatars",
+        reports: [
+          {
+            role: "frontendWorker",
+            summary: "Added Avatar.tsx",
+            changedFiles: ["apps/web/src/Avatar.tsx", "apps/server/src/x.ts"],
+            outOfScopeFiles: ["apps/server/src/x.ts"],
+          },
+        ],
       });
-      expect(result.systemPrompt).toContain("Code Reviewer and Quality Auditor");
-      expect(result.systemPrompt).toContain("Do not modify codebase files directly.");
+      expect(brief).toContain("Do not modify codebase files directly.");
+      expect(brief).toContain("### Frontend Specialist\n\nAdded Avatar.tsx");
+      expect(brief).toContain("Changed outside its target paths:\n- apps/server/src/x.ts");
+    });
+  });
+
+  describe("parsePlannerAssignments", () => {
+    it("reads the last assignment block", () => {
+      const text = [
+        "Plan...",
+        "```json",
+        '{"example": true}',
+        "```",
+        "```json",
+        '{"frontend": "Build the page", "backend": null}',
+        "```",
+      ].join("\n");
+      expect(parsePlannerAssignments(text)).toEqual({ frontend: "Build the page", backend: null });
+    });
+
+    it("treats blank assignments as no work", () => {
+      const text = '```json\n{"frontend": "  ", "backend": "Add the endpoint"}\n```';
+      expect(parsePlannerAssignments(text)).toEqual({
+        frontend: null,
+        backend: "Add the endpoint",
+      });
+    });
+
+    it("returns null without a usable block", () => {
+      expect(parsePlannerAssignments("No json here")).toBeNull();
+      expect(parsePlannerAssignments("```json\n{not json}\n```")).toBeNull();
     });
   });
 });

@@ -46,6 +46,7 @@ import {
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
+import { isTeamRunTurnId } from "./workerRoles.ts";
 
 const monogramSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -386,6 +387,19 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      if (command.teamWorker !== undefined) {
+        const parentThread = yield* requireThread({
+          readModel,
+          command,
+          threadId: command.teamWorker.parentThreadId,
+        });
+        if (parentThread.projectId !== command.projectId || parentThread.teamWorker) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread '${parentThread.id}' cannot own team workers for project '${command.projectId}'.`,
+          });
+        }
+      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -404,6 +418,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
+          ...(command.teamWorker !== undefined ? { teamWorker: command.teamWorker } : {}),
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -1401,6 +1416,31 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           detail: `Proposed plan '${sourceProposedPlan?.planId}' belongs to thread '${sourceThread.id}' in a different project.`,
         });
       }
+      if (
+        targetThread.session?.status === "running" &&
+        isTeamRunTurnId(targetThread.session.activeTurnId)
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${targetThread.id}' is running a team run. Wait for it to finish or stop it.`,
+        });
+      }
+      if (command.teamRun === true) {
+        if (targetThread.teamWorker) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread '${targetThread.id}' is a team worker and cannot start its own team run.`,
+          });
+        }
+        // "starting" is allowed: a worktree bootstrap marks the new thread starting
+        // before its first turn.
+        if (targetThread.session?.status === "running") {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread '${targetThread.id}' already has a turn in progress.`,
+          });
+        }
+      }
       // A worktree bootstrap persists the message ahead of the turn with
       // `thread.message.user.append`; the turn then only references it.
       const persistedUserMessage = targetThread.messages.find(
@@ -1453,6 +1493,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
+          ...(command.teamRun === true ? { teamRun: true } : {}),
           createdAt: command.createdAt,
         },
       };

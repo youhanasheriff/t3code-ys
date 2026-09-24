@@ -58,6 +58,7 @@ import {
   type ThreadTitleMessage,
 } from "../../textGeneration/ThreadTitleContext.ts";
 import { canReplaceThreadTitle, DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
+import { isTeamRunTurnId } from "../workerRoles.ts";
 import {
   resolveSourceControlWriterModelSelection,
   ServerSettingsService,
@@ -1527,6 +1528,10 @@ const make = Effect.gen(function* () {
       return;
     }
     const session = thread.session;
+    // TeamRunReactor owns stopping a team run and the worker turn inside it.
+    if (session && isTeamRunTurnId(session.activeTurnId)) {
+      return;
+    }
     if (!session || session.status === "stopped") {
       return yield* appendProviderFailureActivity({
         threadId: event.payload.threadId,
@@ -1892,7 +1897,8 @@ const make = Effect.gen(function* () {
             event.payload.titleState?.needsRefinement === true)) ||
         (event.type === "thread.session-set" && event.payload.session.status === "ready") ||
         event.type === "thread.runtime-mode-set" ||
-        event.type === "thread.turn-start-requested" ||
+        // Team runs never start a provider turn on their own thread; TeamRunReactor drives them.
+        (event.type === "thread.turn-start-requested" && event.payload.teamRun !== true) ||
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
