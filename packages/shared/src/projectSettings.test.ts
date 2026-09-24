@@ -12,6 +12,7 @@ import {
   resolveProjectFileBackedSetting,
   resolveProjectSettings,
   resolveWorktreeCleanup,
+  resolveWorkerRole,
   withProjectSettingsOverrides,
 } from "./projectSettings.ts";
 import { applyServerSettingsPatch } from "./serverSettings.ts";
@@ -364,5 +365,38 @@ describe("resolveWorktreeCleanup", () => {
       resolveWorktreeCleanup(applyServerSettingsPatch(edited, { worktreeCleanup: null }), null)
         .worktreeAfterDays,
     ).toBe(8);
+  });
+});
+
+describe("resolveWorkerRole", () => {
+  it("resolves default worker roles from environment settings", () => {
+    const role = resolveWorkerRole(DEFAULT_SERVER_SETTINGS, "frontendWorker");
+    expect(role.enabled).toBe(true);
+    expect(role.modelSelection?.model).toBe("claude-opus-5-5");
+    expect(role.targetPaths).toContain("apps/web/**");
+  });
+
+  it("resolves project overrides when configured", () => {
+    const customRoles = {
+      ...DEFAULT_SERVER_SETTINGS.workerRoles,
+      frontendWorker: {
+        ...DEFAULT_SERVER_SETTINGS.workerRoles.frontendWorker,
+        customInstructions: "Project specific instructions",
+      },
+    };
+
+    const settings = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      projectSettingsOverrides: {
+        [projectId]: {
+          workerRoles: customRoles,
+        },
+      },
+    });
+
+    const projectRole = resolveWorkerRole(settings, "frontendWorker", projectId);
+    expect(projectRole.customInstructions).toBe("Project specific instructions");
+
+    const defaultRole = resolveWorkerRole(settings, "frontendWorker", otherProjectId);
+    expect(defaultRole.customInstructions).not.toBe("Project specific instructions");
   });
 });

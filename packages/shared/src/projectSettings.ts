@@ -11,6 +11,8 @@ import {
   type T3ProjectFile,
   type ThreadEnvMode,
   type WorktreeCleanupRules,
+  type WorkerRoleConfig,
+  type WorkerRoleKind,
 } from "@t3tools/contracts";
 import { isModelSelectionProviderEnabled } from "./serverSettings.ts";
 
@@ -228,4 +230,18 @@ export function resolveWorktreeCleanup(
   const { worktreeAfterDays, worktreeOnMerge, worktreeOnDelete, worktreeUnchanged } =
     settings.storageCleanup;
   return { worktreeAfterDays, worktreeOnMerge, worktreeOnDelete, worktreeUnchanged };
+}
+
+/**
+ * Resolves the configuration for a given worker role, taking project overrides into account.
+ */
+export function resolveWorkerRole(
+  settings: ServerSettings,
+  role: WorkerRoleKind,
+  projectId?: ProjectId | null,
+): WorkerRoleConfig {
+  const effectiveSettings = projectId
+    ? resolveProjectSettings(settings, projectId).settings
+    : settings;
+  return effectiveSettings.workerRoles[role];
 }

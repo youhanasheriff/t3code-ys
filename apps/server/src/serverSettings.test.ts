@@ -1596,4 +1596,27 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), broken);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  it.effect("persists and updates workerRoles settings", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const initial = yield* serverSettings.getSettings;
+      assert.isTrue(initial.workerRoles.planner.enabled);
+      assert.isTrue(initial.workerRoles.frontendWorker.enabled);
+      assert.isTrue(initial.workerRoles.backendWorker.enabled);
+      assert.isTrue(initial.workerRoles.reviewer.enabled);
+
+      const next = yield* serverSettings.updateSettings({
+        workerRoles: {
+          frontendWorker: {
+            customInstructions: "Tailwind v4 only",
+          },
+        },
+      });
+
+      assert.equal(next.workerRoles.frontendWorker.customInstructions, "Tailwind v4 only");
+      assert.isTrue(next.workerRoles.frontendWorker.enabled);
+      assert.equal(next.workerRoles.backendWorker.modelSelection?.model, "gpt-6-astra");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });
