@@ -790,6 +790,22 @@ export const ThreadPullRequestLink = Schema.Struct({
 });
 export type ThreadPullRequestLink = typeof ThreadPullRequestLink.Type;
 
+export const WorkerRoleKind = Schema.Literals([
+  "planner",
+  "frontendWorker",
+  "backendWorker",
+  "reviewer",
+]);
+export type WorkerRoleKind = typeof WorkerRoleKind.Type;
+export const WORKER_ROLE_KINDS = WorkerRoleKind.literals;
+
+/** Links a team run's worker thread to the thread that started the run. */
+export const ThreadTeamWorker = Schema.Struct({
+  parentThreadId: ThreadId,
+  role: WorkerRoleKind,
+});
+export type ThreadTeamWorker = typeof ThreadTeamWorker.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -801,6 +817,8 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // Optional so payloads from servers without team runs still decode.
+  teamWorker: Schema.optional(Schema.NullOr(ThreadTeamWorker)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   // Optional so payloads from pre-link servers still decode.
   pullRequests: Schema.Array(ThreadPullRequestLink).pipe(
@@ -888,6 +906,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // Optional so payloads from servers without team runs still decode.
+  teamWorker: Schema.optional(Schema.NullOr(ThreadTeamWorker)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   pullRequests: Schema.Array(ThreadPullRequestLink).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1124,6 +1144,7 @@ const ThreadCreateCommand = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  teamWorker: Schema.optional(ThreadTeamWorker),
   createdAt: IsoDateTime,
   historyImport: Schema.optional(Schema.Literal(true)),
 });
@@ -1322,6 +1343,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  // Runs the message through the configured worker roles instead of one provider turn.
+  teamRun: Schema.optional(Schema.Literal(true)),
   createdAt: IsoDateTime,
 });
 
@@ -1342,6 +1365,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  teamRun: Schema.optional(Schema.Literal(true)),
   createdAt: IsoDateTime,
 });
 
@@ -1756,6 +1780,8 @@ export const ThreadCreatedPayload = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // Optional so events persisted before team runs still decode.
+  teamWorker: Schema.optional(Schema.NullOr(ThreadTeamWorker)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -1910,6 +1936,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  teamRun: Schema.optional(Schema.Literal(true)),
   createdAt: IsoDateTime,
 });
 
