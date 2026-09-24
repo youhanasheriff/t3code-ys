@@ -14,6 +14,7 @@ import {
   BlocksIcon,
   BotIcon,
   createLucideIcon,
+  ChartColumnIcon,
   GitBranchIcon,
   HardDriveIcon,
   PanelsTopLeftIcon,
@@ -28,6 +29,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
+import { isElectron } from "../../env";
 import {
   SidebarContent,
   SidebarFooter,
@@ -86,6 +88,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
+  "/settings/usage": ChartColumnIcon,
   "/settings/archived": ArchiveIcon,
 };
 
@@ -93,11 +96,15 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   label: string;
   to: SettingsPath;
   icon: ComponentType<{ className?: string }>;
-}> = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPath[]).map((to) => ({
-  to,
-  label: SETTINGS_SECTION_LABELS[to],
-  icon: SETTINGS_SECTION_ICONS[to],
-}));
+}> = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPath[])
+  // Usage analytics are recorded only in the desktop build (Firebase), so the tab
+  // is hidden in the hosted web app where there is nothing to show.
+  .filter((to) => to !== "/settings/usage" || isElectron)
+  .map((to) => ({
+    to,
+    label: SETTINGS_SECTION_LABELS[to],
+    icon: SETTINGS_SECTION_ICONS[to],
+  }));
 
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   const Icon = SETTINGS_SECTION_ICONS[to];

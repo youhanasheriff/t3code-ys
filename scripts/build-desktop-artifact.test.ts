@@ -46,6 +46,7 @@ import {
   renderMacPasskeyEntitlements,
   resolveClerkPasskeyNativeArtifacts,
   resolveMacPasskeySigningConfiguration,
+  getMissingDesktopGoogleOAuthBuildEnv,
   resolveDesktopRuntimeDependencies,
   resolveMergedStageDependencies,
   resolveFffNativeDependencies,
@@ -658,7 +659,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/*.map",
       ]);
       assert.deepStrictEqual(mac.dmg, {
-        title: "T3 Code (Alpha) 1.2.3 Installer",
+        title: "YS Code (Alpha) 1.2.3 Installer",
         background: "dmg/dmg-background-latest.png",
         window: { width: 640, height: 432 },
         contents: [
@@ -2056,6 +2057,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("falls back to the default mock update port when the configured port is blank", () => {
     assert.equal(resolveMockUpdateServerUrl(undefined), "http://localhost:3000");
     assert.equal(resolveMockUpdateServerUrl(4123), "http://localhost:4123");
+  });
+
+  it("detects missing desktop Google OAuth build configuration", () => {
+    assert.deepStrictEqual(getMissingDesktopGoogleOAuthBuildEnv({}), [
+      "T3CODE_GOOGLE_OAUTH_CLIENT_ID",
+      "T3CODE_GOOGLE_OAUTH_CLIENT_SECRET",
+    ]);
+    assert.deepStrictEqual(
+      getMissingDesktopGoogleOAuthBuildEnv({
+        T3CODE_GOOGLE_OAUTH_CLIENT_ID: "client.apps.googleusercontent.com",
+        T3CODE_GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+      }),
+      [],
+    );
   });
 
   it("derives the electron-builder package manager user agent from packageManager", () => {

@@ -617,6 +617,15 @@ export class InlinedExternalPackageError extends Schema.TaggedError<InlinedExter
   }
 }
 
+export class MissingDesktopGoogleOAuthConfigError extends Schema.TaggedError<MissingDesktopGoogleOAuthConfigError>()(
+  "MissingDesktopGoogleOAuthConfigError",
+  { missing: Schema.Array(Schema.String) },
+) {
+  override get message(): string {
+    return `Missing desktop Google OAuth build config: ${this.missing.join(", ")}. Set these in the environment or repo-root .env.local before building a desktop artifact.`;
+  }
+}
+
 export class MissingDesktopBuildInputError extends Schema.TaggedError<MissingDesktopBuildInputError>()(
   "MissingDesktopBuildInputError",
   {
@@ -2599,6 +2608,15 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
   return `http://localhost:${mockUpdateServerPort ?? 3000}`;
 }
 
+export function getMissingDesktopGoogleOAuthBuildEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): ReadonlyArray<string> {
+  return ["T3CODE_GOOGLE_OAUTH_CLIENT_ID", "T3CODE_GOOGLE_OAUTH_CLIENT_SECRET"].filter((name) => {
+    const value = env[name]?.trim();
+    return !value;
+  });
+}
+
 // Electron Builder detects pnpm from npm_config_user_agent, whose value uses
 // user-agent syntax (pnpm/11.10.0) rather than packageManager syntax
 // (pnpm@11.10.0).
@@ -3413,6 +3431,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const bundledClientEntry = path.join(distDirs.serverDist, "client/index.html");
 
   if (!options.skipBuild) {
+    const missingGoogleOAuthEnv = getMissingDesktopGoogleOAuthBuildEnv(loadRepoEnv({ repoRoot }));
+    if (missingGoogleOAuthEnv.length > 0) {
+      return yield* new MissingDesktopGoogleOAuthConfigError({ missing: missingGoogleOAuthEnv });
+    }
+
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
     const spawnCommand = yield* resolveSpawnCommand("vp", ["run", "build:desktop"]);
     yield* runCommand(

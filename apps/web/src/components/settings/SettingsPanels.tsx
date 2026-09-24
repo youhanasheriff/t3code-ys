@@ -63,6 +63,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { isElectron } from "../../env";
+import { useDesktopAuthStore } from "../../desktopAuth/desktopAuthStore";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import {
@@ -3234,8 +3235,42 @@ export function GeneralSettingsPanel() {
         />
       </SettingsSection>
 
+      <DesktopAccountSettingsSection />
       <LegacyFeaturesSection />
     </SettingsPageContainer>
+  );
+}
+
+/**
+ * Desktop-only account section: shows the signed-in Google account and a sign-out
+ * action. Renders nothing in the hosted web build.
+ */
+function DesktopAccountSettingsSection() {
+  const user = useDesktopAuthStore((state) => state.user);
+  const signOut = useDesktopAuthStore((state) => state.signOut);
+
+  if (!isElectron || !user) {
+    return null;
+  }
+
+  return (
+    <SettingsSection title="Account">
+      <SettingsRow
+        title="Signed in"
+        description={user.email ?? user.displayName ?? "Google account"}
+        control={
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              void signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        }
+      />
+    </SettingsSection>
   );
 }
 

@@ -9,6 +9,7 @@ packages:
 # true = allowed to run build scripts; false mirrors the pnpm 10 behavior
 # where anything outside onlyBuiltDependencies was silently not built.
 allowBuilds:
+  '@firebase/util': set this to true or false
   browser-tabs-lock: false
   bufferutil: false
   core-js: false
@@ -17,6 +18,7 @@ allowBuilds:
   esbuild: true
   msw: false
   node-pty: true
+  protobufjs: set this to true or false
   sharp: true
   utf-8-validate: false
   workerd: false
@@ -209,6 +211,6 @@ peerDependencyRules:
     vite: "*"
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
