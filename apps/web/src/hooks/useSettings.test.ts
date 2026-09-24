@@ -413,6 +413,16 @@ describe("mergeEnvironmentSettings", () => {
     expect(settings.sidebarAutoSettleAfterDays).toBe(14);
     expect(settings.sidebarAutoSettleOnMerge).toBe(false);
   });
+
+  it("merges workerRoles settings cleanly", () => {
+    const settings = mergeEnvironmentSettings(DEFAULT_SERVER_SETTINGS, DEFAULT_CLIENT_SETTINGS);
+    expect(settings.workerRoles).toBe(DEFAULT_SERVER_SETTINGS.workerRoles);
+    expect(settings.workerRoles.planner.enabled).toBe(true);
+    expect(settings.workerRoles.planner.modelSelection?.model).toBe("glm-5.3-flash");
+    expect(settings.workerRoles.frontendWorker.modelSelection?.model).toBe("claude-opus-5-5");
+    expect(settings.workerRoles.backendWorker.modelSelection?.model).toBe("gpt-6-astra");
+    expect(settings.workerRoles.reviewer.modelSelection?.model).toBe("gpt-6-sol");
+  });
 });
 
 describe("onboarding completion persistence", () => {

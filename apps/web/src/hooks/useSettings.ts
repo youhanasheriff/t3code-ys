@@ -16,6 +16,9 @@ import {
   type EnvironmentId,
   ServerSettings,
   type ServerSettingsPatch,
+  type WorkerRoleConfig,
+  type WorkerRoleKind,
+  type WorkerRolesSettings,
 } from "@t3tools/contracts";
 import {
   type ClientSettingsPatch,
@@ -393,6 +396,14 @@ export function usePrimarySettings<T = UnifiedSettings>(
   selector?: (settings: UnifiedSettings) => T,
 ): T {
   return useMergedSettings(useAtomValue(primaryServerSettingsAtom), selector);
+}
+
+export function useWorkerRolesSettings(): WorkerRolesSettings {
+  return usePrimarySettings((s) => s.workerRoles);
+}
+
+export function useWorkerRoleConfig(role: WorkerRoleKind): WorkerRoleConfig {
+  return usePrimarySettings((s) => s.workerRoles[role]);
 }
 
 export const PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE =
