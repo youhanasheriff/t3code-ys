@@ -164,6 +164,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["new thread project provider reasoning effort"],
   },
   {
+    id: "worker-roles",
+    title: "Worker roles",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: [
+      "multi agent planner frontend specialist backend reviewer custom instructions target paths",
+    ],
+  },
+  {
     id: "default-permissions",
     title: "Permissions",
     to: "/settings/general",
