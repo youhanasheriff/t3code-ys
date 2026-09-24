@@ -992,3 +992,46 @@ it("validates remote device hosts and rejects ambiguous host ids", () => {
   ).toThrow();
   expect(() => decodeDeviceHostSettings({ deviceHosts: [{ ...host, port: 0 }] })).toThrow();
 });
+
+describe("ServerSettings.workerRoles", () => {
+  it("defaults all 4 worker roles with configured defaults", () => {
+    const decoded = decodeServerSettings({});
+    expect(decoded.workerRoles).toBeDefined();
+    expect(decoded.workerRoles.planner.enabled).toBe(true);
+    expect(decoded.workerRoles.planner.modelSelection?.model).toBe("glm-5.3-flash");
+    expect(decoded.workerRoles.frontendWorker.enabled).toBe(true);
+    expect(decoded.workerRoles.frontendWorker.modelSelection?.model).toBe("claude-opus-5-5");
+    expect(decoded.workerRoles.frontendWorker.targetPaths).toContain("apps/web/**");
+    expect(decoded.workerRoles.backendWorker.enabled).toBe(true);
+    expect(decoded.workerRoles.backendWorker.modelSelection?.model).toBe("gpt-6-astra");
+    expect(decoded.workerRoles.reviewer.enabled).toBe(true);
+    expect(decoded.workerRoles.reviewer.modelSelection?.model).toBe("gpt-6-sol");
+  });
+
+  it("accepts partial updates via ServerSettingsPatch", () => {
+    const patch = decodeServerSettingsPatch({
+      workerRoles: {
+        frontendWorker: {
+          customInstructions: "  Use Tailwind v4 classes only.  ",
+          targetPaths: ["apps/web/**"],
+        },
+      },
+    });
+
+    expect(patch.workerRoles?.frontendWorker?.customInstructions).toBe("Use Tailwind v4 classes only.");
+    expect(patch.workerRoles?.frontendWorker?.targetPaths).toEqual(["apps/web/**"]);
+    expect(patch.workerRoles?.backendWorker).toBeUndefined();
+  });
+
+  it("allows setting modelSelection to null to inherit or disable custom model", () => {
+    const patch = decodeServerSettingsPatch({
+      workerRoles: {
+        planner: {
+          modelSelection: null,
+        },
+      },
+    });
+
+    expect(patch.workerRoles?.planner?.modelSelection).toBeNull();
+  });
+});

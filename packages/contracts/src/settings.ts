@@ -998,6 +998,89 @@ export const WorktreeCleanup = Schema.NullOr(
 );
 export type WorktreeCleanup = typeof WorktreeCleanup.Type;
 
+export const WorkerRoleKind = Schema.Literals([
+  "planner",
+  "frontendWorker",
+  "backendWorker",
+  "reviewer",
+]);
+export type WorkerRoleKind = typeof WorkerRoleKind.Type;
+
+export const WorkerRoleConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  modelSelection: Schema.NullOr(ModelSelection).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  customInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  targetPaths: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type WorkerRoleConfig = typeof WorkerRoleConfig.Type;
+
+export const WorkerRolesSettings = Schema.Struct({
+  planner: WorkerRoleConfig,
+  frontendWorker: WorkerRoleConfig,
+  backendWorker: WorkerRoleConfig,
+  reviewer: WorkerRoleConfig,
+});
+export type WorkerRolesSettings = typeof WorkerRolesSettings.Type;
+
+export const DEFAULT_WORKER_ROLES_SETTINGS: WorkerRolesSettings = {
+  planner: {
+    enabled: true,
+    modelSelection: {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: "glm-5.3-flash",
+      options: [],
+    },
+    customInstructions:
+      "Analyze the user request, decompose it into frontend and backend tasks, coordinate worker assignments, and establish verification criteria.",
+    targetPaths: [],
+  },
+  frontendWorker: {
+    enabled: true,
+    modelSelection: {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: "claude-opus-5-5",
+      options: [],
+    },
+    customInstructions:
+      "Implement frontend UI components, styling, interactions, and client-side logic within the frontend worktree.",
+    targetPaths: ["apps/web/**", "apps/desktop/**", "packages/ui/**"],
+  },
+  backendWorker: {
+    enabled: true,
+    modelSelection: {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-6-astra",
+      options: [
+        {
+          id: "reasoningEffort",
+          value: "medium",
+        },
+      ],
+    },
+    customInstructions:
+      "Implement backend logic, services, APIs, data contracts, and connectivity within the backend worktree.",
+    targetPaths: ["apps/server/**", "packages/contracts/**", "packages/client-runtime/**"],
+  },
+  reviewer: {
+    enabled: true,
+    modelSelection: {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-6-sol",
+      options: [
+        {
+          id: "reasoningEffort",
+          value: "high",
+        },
+      ],
+    },
+    customInstructions:
+      "Perform a comprehensive, read-only code review of the integrated diff, checking for correctness, architecture adherence, edge cases, and safety.",
+    targetPaths: [],
+  },
+};
+
 export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "worktreeCleanup",
   "defaultModelSelection",
@@ -1010,6 +1093,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "enableAgentBrowserAccess",
   "enableAgentDeviceAccess",
   "textGenerationModelSelection",
+  "workerRoles",
   "sourceControlWriterModelSelection",
   "sourceControlWritingStyle",
   "pullRequestMergeMethod",
@@ -1037,6 +1121,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   textGenerationModelSelection: Schema.optionalKey(ModelSelection),
+  workerRoles: Schema.optionalKey(WorkerRolesSettings),
   sourceControlWriterModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSettings),
   pullRequestMergeMethod: Schema.optionalKey(Schema.NullOr(PullRequestMergeMethod)),
@@ -1236,6 +1321,9 @@ export const ServerSettings = Schema.Struct({
       }),
     ),
   ),
+  workerRoles: WorkerRolesSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WORKER_ROLES_SETTINGS)),
+  ),
   sourceControlWritingStyle: SourceControlWritingStyleSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1384,6 +1472,22 @@ const ModelSelectionPatch = Schema.Struct({
   options: Schema.optionalKey(ProviderOptionSelections),
 });
 
+export const WorkerRoleConfigPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  modelSelection: Schema.optionalKey(Schema.NullOr(ModelSelectionPatch)),
+  customInstructions: Schema.optionalKey(TrimmedString),
+  targetPaths: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+});
+export type WorkerRoleConfigPatch = typeof WorkerRoleConfigPatch.Type;
+
+export const WorkerRolesSettingsPatch = Schema.Struct({
+  planner: Schema.optionalKey(WorkerRoleConfigPatch),
+  frontendWorker: Schema.optionalKey(WorkerRoleConfigPatch),
+  backendWorker: Schema.optionalKey(WorkerRoleConfigPatch),
+  reviewer: Schema.optionalKey(WorkerRoleConfigPatch),
+});
+export type WorkerRolesSettingsPatch = typeof WorkerRolesSettingsPatch.Type;
+
 const CodexSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
@@ -1515,6 +1619,7 @@ export const ServerSettingsPatch = Schema.Struct({
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
+  workerRoles: Schema.optionalKey(WorkerRolesSettingsPatch),
   sourceControlWritingStyle: Schema.optionalKey(
     Schema.Struct({
       mode: Schema.optionalKey(SourceControlWritingStyleMode),
