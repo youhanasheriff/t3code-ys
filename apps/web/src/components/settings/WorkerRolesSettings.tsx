@@ -31,9 +31,7 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "../../providerInstances";
-import {
-  getCustomModelOptionsByInstance,
-} from "../../modelSelection";
+import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
@@ -60,14 +58,16 @@ interface RoleMetadata {
 export const WORKER_ROLE_METADATA: Record<WorkerRoleKind, RoleMetadata> = {
   planner: {
     title: "Lead Planner",
-    description: "Decomposes requests into coordinated frontend and backend subtasks with verification criteria.",
+    description:
+      "Decomposes requests into coordinated frontend and backend subtasks with verification criteria.",
     icon: BrainIcon,
     hasTargetPaths: false,
     pathPlaceholder: "",
   },
   frontendWorker: {
     title: "Frontend Specialist",
-    description: "Executes UI client components, state management, interactions, styling, and design polish.",
+    description:
+      "Executes UI client components, state management, interactions, styling, and design polish.",
     icon: LayoutIcon,
     hasTargetPaths: true,
     pathPlaceholder: "apps/web/**, apps/desktop/**, packages/ui/**",
@@ -81,7 +81,8 @@ export const WORKER_ROLE_METADATA: Record<WorkerRoleKind, RoleMetadata> = {
   },
   reviewer: {
     title: "Code Reviewer",
-    description: "Audits integrated changes against planner criteria and provides structured review feedback.",
+    description:
+      "Audits integrated changes against planner criteria and provides structured review feedback.",
     icon: ShieldCheckIcon,
     hasTargetPaths: false,
     pathPlaceholder: "",
@@ -92,8 +93,7 @@ export function WorkerRolesSettingsSection() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const navigate = useNavigate();
-  const { environment, connectedEnvironments, targets } = useSettingsScope();
-  const getModelDisabledReason = useScopedModelDisabledReason(targets);
+  const { environment } = useSettingsScope();
 
   const [expandedRoles, setExpandedRoles] = useState<Record<WorkerRoleKind, boolean>>({
     planner: false,
@@ -111,6 +111,7 @@ export function WorkerRolesSettingsSection() {
   const entries = sortProviderInstanceEntries(
     applyProviderInstanceSettings(deriveProviderInstanceEntries(serverProviders), settings),
   );
+  const getModelDisabledReason = useScopedModelDisabledReason(settings, entries);
 
   const updateRole = useCallback(
     (role: WorkerRoleKind, patch: Partial<WorkerRoleConfig>) => {
@@ -155,10 +156,7 @@ export function WorkerRolesSettingsSection() {
   );
 
   return (
-    <SettingsSection
-      id="worker-roles"
-      title="Worker roles (multi-agent)"
-    >
+    <SettingsSection id="worker-roles" title="Worker roles (multi-agent)">
       <div className="flex flex-col gap-3 py-1">
         {WORKER_ROLE_KINDS.map((roleKey) => {
           const meta = WORKER_ROLE_METADATA[roleKey];
@@ -214,10 +212,7 @@ export function WorkerRolesSettingsSection() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {modified && (
-                    <SettingResetButton
-                      label={meta.title}
-                      onClick={() => resetRole(roleKey)}
-                    />
+                    <SettingResetButton label={meta.title} onClick={() => resetRole(roleKey)} />
                   )}
                   <Switch
                     checked={roleConfig.enabled}
@@ -292,7 +287,9 @@ export function WorkerRolesSettingsSection() {
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-foreground">Target paths</span>
-                        <span className="text-xs text-muted-foreground">Comma-separated glob patterns</span>
+                        <span className="text-xs text-muted-foreground">
+                          Comma-separated glob patterns
+                        </span>
                       </div>
                       <Input
                         value={roleConfig.targetPaths.join(", ")}

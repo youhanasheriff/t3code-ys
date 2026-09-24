@@ -8,7 +8,8 @@ import { WorkerRolesSettingsSection } from "./WorkerRolesSettings";
 
 type WorkerRoles = typeof DEFAULT_UNIFIED_SETTINGS.workerRoles;
 const state = vi.hoisted(() => ({
-  roles: { ...DEFAULT_UNIFIED_SETTINGS.workerRoles } as WorkerRoles,
+  // Filled in beforeEach: hoisted code runs before imports initialize.
+  roles: {} as WorkerRoles,
   updateSettings: vi.fn<(patch: ScopedSettingsPatch) => void>(),
 }));
 
@@ -56,21 +57,12 @@ vi.mock("../ui/switch", () => ({
 }));
 vi.mock("../ui/textarea", () => ({
   Textarea: ({ value, onChange, placeholder }: any) => (
-    <textarea
-      value={value}
-      placeholder={placeholder}
-      onChange={onChange}
-    />
+    <textarea value={value} placeholder={placeholder} onChange={onChange} />
   ),
 }));
 vi.mock("../ui/input", () => ({
   Input: ({ value, onChange, placeholder }: any) => (
-    <input
-      type="text"
-      value={value}
-      placeholder={placeholder}
-      onChange={onChange}
-    />
+    <input type="text" value={value} placeholder={placeholder} onChange={onChange} />
   ),
 }));
 
@@ -83,7 +75,7 @@ beforeEach(() => {
     if (patch.workerRoles) {
       state.roles = {
         ...state.roles,
-        ...patch.workerRoles,
+        ...(patch.workerRoles as Partial<WorkerRoles>),
       };
     }
   });
@@ -113,7 +105,9 @@ describe("WorkerRolesSettingsSection", () => {
   });
 
   it("toggles role enabled switch", () => {
-    const switches = renderer!.root.findAllByType("input").filter((i) => i.props.type === "checkbox");
+    const switches = renderer!.root
+      .findAllByType("input")
+      .filter((i) => i.props.type === "checkbox");
     expect(switches.length).toBe(4);
 
     // Toggle frontendWorker switch (index 1)
@@ -132,7 +126,9 @@ describe("WorkerRolesSettingsSection", () => {
   it("expands a role and allows editing custom instructions and target paths", () => {
     // Buttons inside the component: 4 headers
     const buttons = renderer!.root.findAllByType("button");
-    const frontendButton = buttons.find((b) => JSON.stringify(b.props).includes("Frontend Specialist"));
+    const frontendButton = buttons.find((b) =>
+      b.findAllByType("span").some((span) => span.children.includes("Frontend Specialist")),
+    );
     expect(frontendButton).toBeDefined();
 
     // Click to expand frontend worker
@@ -190,9 +186,11 @@ describe("WorkerRolesSettingsSection", () => {
       );
     });
 
-    const resetButtons = renderer!.root.findAllByType("button").filter((b) =>
-      b.children.some((c: any) => typeof c === "string" && c.includes("Reset Lead Planner")),
-    );
+    const resetButtons = renderer!.root
+      .findAllByType("button")
+      .filter((b) =>
+        b.children.some((c: any) => typeof c === "string" && c.includes("Reset Lead Planner")),
+      );
     expect(resetButtons.length).toBe(1);
 
     act(() => {
