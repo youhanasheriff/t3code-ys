@@ -137,6 +137,8 @@ function EnvironmentNotifications({
             ? "completion"
             : null;
       if (!kind) continue;
+      // A team run announces completion on its parent; only a worker's request for input notifies.
+      if (thread.teamWorker && kind === "completion") continue;
       const title =
         kind === "completion"
           ? "Thread completed"

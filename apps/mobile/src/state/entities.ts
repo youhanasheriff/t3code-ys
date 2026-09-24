@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useMemo } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
 import type {
@@ -58,6 +59,18 @@ export function useProjects(): ReadonlyArray<EnvironmentProject> {
 
 export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   return useAtomValue(environmentThreadShells.threadShellsAtom);
+}
+
+/** Threads a thread list shows: a team run's workers are reached from their parent. */
+export function useListedThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
+  const threads = useThreadShells();
+  return useMemo(
+    () =>
+      threads.some((thread) => thread.teamWorker)
+        ? threads.filter((thread) => !thread.teamWorker)
+        : threads,
+    [threads],
+  );
 }
 
 export function useProject(ref: ScopedProjectRef | null): EnvironmentProject | null {

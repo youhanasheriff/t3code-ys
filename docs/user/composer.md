@@ -50,6 +50,21 @@ the oldest queued message now. Change `thread.steerQueuedMessage` in
 **Settings → Keybindings** to use another shortcut. It leaves the current draft
 in the composer and waits if the agent needs an approval or an answer.
 
+## Team runs
+
+On web and desktop, turn on **Team** in the composer to send messages to your
+worker roles instead of a single agent. The planner splits the work, the frontend
+and backend workers make the changes one after another, and the reviewer checks
+the result. The review is posted as the reply. Configure each role's model,
+instructions, and target paths in **Settings → General → Worker roles**.
+
+Each role runs in its own worker thread in the same workspace. Worker threads
+don't appear in the thread list; open one from its row in the conversation. A
+worker that changes files outside its target paths is flagged, not blocked, and
+the reviewer is told which files. Workers use the thread's permission mode, so
+approval requests come to you as usual. Stop ends the run and the worker that is
+running. Deleting the thread also deletes its workers.
+
 ## Queue messages offline on mobile
 
 Mobile keeps local copies of draft attachments, so you can preview them and queue

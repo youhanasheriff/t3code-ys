@@ -22,7 +22,9 @@ import {
   type TurnId,
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { Link } from "@tanstack/react-router";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import {
@@ -4883,6 +4885,19 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           !showDestructiveRowStyle &&
           !toolIconAcceptsTint(entryIconName, entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
+          ) : null}
+          {workEntry.teamWorkerThreadId && threadRef ? (
+            <Link
+              to="/$environmentId/$threadId"
+              params={buildThreadRouteParams(
+                scopeThreadRef(threadRef.environmentId, workEntry.teamWorkerThreadId),
+              )}
+              className="shrink-0 text-muted-foreground text-xs underline-offset-2 hover:text-foreground hover:underline"
+              onClick={stopRowToggle}
+              onKeyDown={stopRowToggle}
+            >
+              Open worker
+            </Link>
           ) : null}
           <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           <span

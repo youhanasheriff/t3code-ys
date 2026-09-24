@@ -3,6 +3,7 @@ import { memo, type ReactNode } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
+  MenuCheckboxItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -25,7 +26,10 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
    * open menu closes when its trigger hides.
    */
   hidden?: boolean;
+  teamRunMode: boolean;
+  showTeamRunToggle: boolean;
   onToggleInteractionMode: () => void;
+  onToggleTeamRunMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
@@ -68,6 +72,17 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
               <MenuRadioItem value="default">Chat</MenuRadioItem>
               <MenuRadioItem value="plan">Plan</MenuRadioItem>
             </MenuRadioGroup>
+            <MenuDivider />
+          </>
+        ) : null}
+        {props.showTeamRunToggle ? (
+          <>
+            <MenuCheckboxItem
+              checked={props.teamRunMode}
+              onCheckedChange={() => props.onToggleTeamRunMode()}
+            >
+              Team run
+            </MenuCheckboxItem>
             <MenuDivider />
           </>
         ) : null}

@@ -121,6 +121,8 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { useTeamRunModeStore } from "../../teamRunModeStore";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { useComposerTriggerState } from "./useComposerTriggerState";
@@ -940,6 +942,7 @@ import {
   PencilRulerIcon,
   PlayIcon,
   ShieldIcon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -1079,7 +1082,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   runtimeMode: RuntimeMode;
   size?: "sm" | "xs";
   hidden?: boolean;
+  teamRunMode: boolean;
   onToggleInteractionMode: () => void;
+  onToggleTeamRunMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
@@ -1179,9 +1184,39 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
       </Tooltip>
 
       {interactionModeToggle}
+      <ComposerControlSeparator size={size} />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <ComposerControl
+              size={size}
+              className="shrink-0 whitespace-nowrap"
+              aria-pressed={props.teamRunMode}
+              type="button"
+              onClick={props.onToggleTeamRunMode}
+              aria-label={teamRunTooltip(props.teamRunMode)}
+            />
+          }
+        >
+          <ComposerControlIcon
+            icon={UsersIcon}
+            size={size}
+            className={props.teamRunMode ? "text-current opacity-100" : undefined}
+          />
+          <span data-composer-control-label className="sr-only sm:not-sr-only">
+            Team
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="top">{teamRunTooltip(props.teamRunMode)}</TooltipPopup>
+      </Tooltip>
     </>
   );
 });
+
+const teamRunTooltip = (enabled: boolean) =>
+  enabled
+    ? "Team run — your worker roles plan, build, and review this message. Click to send normally"
+    : "Send normally — click to run messages through your worker roles";
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
@@ -1578,6 +1613,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onFileOpen,
   } = props;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const routeThreadKey = scopedThreadKey(props.routeThreadRef);
+  const teamRunMode = useTeamRunModeStore((state) => state.enabledThreadKeys.has(routeThreadKey));
+  const setTeamRunMode = useTeamRunModeStore((state) => state.setTeamRunMode);
+  const toggleTeamRunMode = useCallback(
+    () => setTeamRunMode(routeThreadKey, !teamRunMode),
+    [routeThreadKey, setTeamRunMode, teamRunMode],
+  );
   const activeTasksProgress = props.threadSyncPhase === null ? props.activeTasksProgress : null;
   const activeTaskSteps = props.threadSyncPhase === null ? props.activeTaskSteps : null;
   // ------------------------------------------------------------------
@@ -4977,7 +5019,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+          teamRunMode={teamRunMode}
           onToggleInteractionMode={toggleInteractionMode}
+          onToggleTeamRunMode={toggleTeamRunMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
       ),
@@ -5135,7 +5179,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
+            teamRunMode={teamRunMode}
+            showTeamRunToggle={hiddenRestingBlockIds.includes("mode")}
             onToggleInteractionMode={toggleInteractionMode}
+            onToggleTeamRunMode={toggleTeamRunMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />
         </div>

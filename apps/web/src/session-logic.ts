@@ -27,7 +27,7 @@ import {
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
   type ToolLifecycleItemType,
-  type ThreadId,
+  ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
 
@@ -92,6 +92,8 @@ export interface WorkLogEntry {
     workflowId: string | null;
     agentTaskIds: ReadonlyArray<string>;
   };
+  /** Present on team run rows: the worker thread the row links to. */
+  teamWorkerThreadId?: ThreadId;
 }
 
 const workLogCollapseKey = Symbol();
@@ -671,6 +673,16 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (isTaskActivity && payload && isBackgroundTaskActivity(payload)) {
     entry.isBackgroundTask = true;
   }
+  if (activity.kind.startsWith("team-run.")) {
+    const childThreadId = asTrimmedString(payload?.childThreadId);
+    if (childThreadId) entry.teamWorkerThreadId = ThreadId.make(childThreadId);
+    const outOfScopeFiles = Array.isArray(payload?.outOfScopeFiles)
+      ? payload.outOfScopeFiles.filter((file): file is string => typeof file === "string")
+      : [];
+    if (outOfScopeFiles.length > 0) {
+      entry.detail = `Changed outside its target paths:\n${outOfScopeFiles.join("\n")}`;
+    }
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry[workLogCollapseKey] = collapseKey;
@@ -732,7 +744,20 @@ function collapseDerivedWorkLogEntries(
   // rows (live-test finding, thread 7ac7ef05).
   const groupKeyByTaskId = new Map<string, string>();
   const toolLifecycleRowIndex = new Map<string, number>();
+  // A team run role posts "working" then its outcome; show one row per worker thread.
+  const teamWorkerRowIndex = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.sourceActivityKind === "team-run.role" && entry.teamWorkerThreadId) {
+      const existingIndex = teamWorkerRowIndex.get(entry.teamWorkerThreadId);
+      if (existingIndex !== undefined) {
+        const existing = collapsed[existingIndex]!;
+        collapsed[existingIndex] = { ...entry, id: existing.id, createdAt: existing.createdAt };
+        continue;
+      }
+      teamWorkerRowIndex.set(entry.teamWorkerThreadId, collapsed.length);
+      collapsed.push(entry);
+      continue;
+    }
     const isTaskRow =
       entry.taskId !== undefined &&
       !entry.isBackgroundTask &&

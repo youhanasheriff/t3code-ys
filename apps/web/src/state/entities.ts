@@ -78,6 +78,20 @@ export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   return useAtomValue(environmentThreadShells.threadShellsAtom);
 }
 
+/** Threads a thread list shows: a team run's workers are reached from their parent. */
+export function useListedThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
+  const threads = useThreadShells();
+  return useMemo(() => withoutTeamWorkers(threads), [threads]);
+}
+
+export function withoutTeamWorkers<T extends { readonly teamWorker?: unknown }>(
+  threads: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  return threads.some((thread) => thread.teamWorker)
+    ? threads.filter((thread) => !thread.teamWorker)
+    : threads;
+}
+
 export function useAllEnvironmentShellsBootstrapped(): boolean {
   return useAtomValue(allEnvironmentShellsBootstrappedAtom);
 }

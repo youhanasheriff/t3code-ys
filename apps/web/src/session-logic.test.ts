@@ -477,6 +477,62 @@ describe("workEntryIndicatesToolNeutralStatus", () => {
 });
 
 describe("deriveWorkLogEntries", () => {
+  it("shows one team run row per worker thread with its latest status", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "planner-running",
+        kind: "team-run.role",
+        summary: "Lead Planner is working",
+        tone: "info",
+        sequence: 0,
+        payload: { role: "planner", status: "running", childThreadId: "worker-planner" },
+      }),
+      makeActivity({
+        id: "planner-done",
+        kind: "team-run.role",
+        summary: "Lead Planner finished",
+        tone: "info",
+        sequence: 1,
+        payload: { role: "planner", status: "completed", childThreadId: "worker-planner" },
+      }),
+      makeActivity({
+        id: "frontend-done",
+        kind: "team-run.role",
+        summary: "Frontend Specialist changed 1 file outside its target paths",
+        tone: "error",
+        sequence: 2,
+        payload: {
+          role: "frontendWorker",
+          status: "completed",
+          childThreadId: "worker-frontend",
+          outOfScopeFiles: ["apps/server/src/leak.ts"],
+        },
+      }),
+    ]);
+
+    expect(
+      entries.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        worker: entry.teamWorkerThreadId,
+        detail: entry.detail,
+      })),
+    ).toEqual([
+      {
+        id: "planner-running",
+        label: "Lead Planner finished",
+        worker: "worker-planner",
+        detail: undefined,
+      },
+      {
+        id: "frontend-done",
+        label: "Frontend Specialist changed 1 file outside its target paths",
+        worker: "worker-frontend",
+        detail: "Changed outside its target paths:\napps/server/src/leak.ts",
+      },
+    ]);
+  });
+
   it("keeps the latest task progress without emitting plan-update log entries", () => {
     const activities = [
       makeActivity({ id: "before", kind: "tool.completed", summary: "Read files", sequence: 0 }),

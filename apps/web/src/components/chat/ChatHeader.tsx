@@ -23,6 +23,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "@tanstack/react-router";
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
@@ -39,6 +40,8 @@ import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
+import { useThreadShell } from "../../state/entities";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -434,6 +437,9 @@ export const ChatHeader = memo(function ChatHeader({
             </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
+        {isServerThread ? (
+          <TeamRunParentCrumb environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
+        ) : null}
         <WorkspaceBreadcrumbItem current className="min-w-10 flex-1">
           {renamingTitle !== null ? (
             <input
@@ -526,3 +532,31 @@ export const ChatHeader = memo(function ChatHeader({
     </div>
   );
 });
+
+/** A team run worker's link back to the thread that started the run. */
+function TeamRunParentCrumb(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
+  const thread = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
+  const parentThreadId = thread?.teamWorker?.parentThreadId ?? null;
+  const parent = useThreadShell(
+    parentThreadId === null ? null : scopeThreadRef(props.environmentId, parentThreadId),
+  );
+  if (parentThreadId === null) return null;
+  return (
+    <>
+      <WorkspaceBreadcrumbItem>
+        <Link
+          to="/$environmentId/$threadId"
+          params={buildThreadRouteParams(scopeThreadRef(props.environmentId, parentThreadId))}
+          className="inline-flex min-w-0 max-w-full items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <WorkspaceBreadcrumbText className="max-w-40">
+            {parent?.title ?? "Team run"}
+          </WorkspaceBreadcrumbText>
+        </Link>
+      </WorkspaceBreadcrumbItem>
+      <WorkspaceBreadcrumbSeparator>
+        <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
+      </WorkspaceBreadcrumbSeparator>
+    </>
+  );
+}

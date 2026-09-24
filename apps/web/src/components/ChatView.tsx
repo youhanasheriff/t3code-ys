@@ -305,6 +305,7 @@ import {
   useComposerDraftStore,
   DraftId,
 } from "../composerDraftStore";
+import { useTeamRunModeStore } from "../teamRunModeStore";
 import {
   formatTerminalContextLabel,
   type TerminalContextDraft,
@@ -8433,6 +8434,9 @@ export default function ChatView(props: ChatViewProps) {
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),
+          ...(useTeamRunModeStore.getState().enabledThreadKeys.has(routeThreadKey)
+            ? { teamRun: true as const }
+            : {}),
           createdAt: messageCreatedAt,
         },
       });
